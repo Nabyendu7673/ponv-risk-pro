@@ -45,7 +45,7 @@ h1 {
     color: #1a1a1a;
     text-align: center;
     margin-bottom: 2.5rem;
-    font-size: 3em;
+    font-size: 6em;
     font-weight: 700;
     letter-spacing: -0.5px;
     background: linear-gradient(120deg, #2b5876, #4e4376);
