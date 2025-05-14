@@ -2,7 +2,7 @@ streamlit==1.30.0
 numpy>=1.26
 pandas==2.0.3  # Downgraded from 2.1.0 to a potentially more compatible version for building on Python 3.12
 matplotlib==3.7.1
-scikit-learn==1.2.2
+scikit-learn==1.3.0
 lightgbm==3.3.5
 xgboost==1.7.5
 imblearn==0.0   # Still keep an eye on this one if issues persist
