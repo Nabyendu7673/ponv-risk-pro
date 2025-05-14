@@ -50,7 +50,7 @@ h1 {
     letter-spacing: -0.5px;
     background: linear-gradient(120deg, #2b5876, #4e4376);
     -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    -webkit-text-fill-color: #1a1a1a;
 }
 
 /* Sidebar Enhancement */
