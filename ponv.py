@@ -556,6 +556,108 @@ with tab1:
     def propofol_score(mode):
         return -3 if mode == "TIVA" else -1 if mode == "Induction Only" else 0
 
+    def midazolam_score(dose):
+        if dose == 0:
+            return 0
+        elif dose <= 2:
+            return -1
+        elif dose <= 10:
+            return -2
+        else:
+            return -3
+
+    def ondansetron_score(dose):
+        if dose == 0:
+            return 0
+        elif dose < 4:
+            return -1
+        elif dose < 8:
+            return -2
+        else:
+            return -3
+
+    def dexamethasone_score(dose):
+        if dose == 0:
+            return 0
+        elif dose < 4:
+            return -1
+        elif dose <= 10:
+            return -2
+        else:
+            return -3
+
+    def glycopyrrolate_score(dose):
+        if dose == 0:
+            return 0
+        elif dose <= 0.2:
+            return 1
+        else:
+            return 2
+
+    def nalbuphine_score(dose):
+        if dose == 0:
+            return 0
+        elif dose <= 10:
+            return 1
+        else:
+            return 2
+
+    def fentanyl_score(dose):
+        if dose == 0:
+            return 0
+        elif dose <= 100:
+            return 1
+        elif dose <= 500:
+            return 2
+        else:
+            return 3
+
+    def butorphanol_score(dose):
+        if dose == 0:
+            return 0
+        elif dose <= 2:
+            return 1
+        else:
+            return 2
+
+    def pentazocine_score(dose):
+        if dose == 0:
+            return 0
+        elif dose <= 100:
+            return 1
+        elif dose <= 200:
+            return 2
+        else:
+            return 3
+
+    def muscle_relaxant_score(muscle_relaxant, dose):
+        if muscle_relaxant == "None":
+            return 0
+        elif muscle_relaxant == "Succinylcholine":
+            if dose < 1.5:
+                return 1
+            else:
+                return 2
+        elif muscle_relaxant == "Rocuronium":
+            if dose < 0.6:
+                return 0
+            elif dose <= 1.0:
+                return 1
+            else:
+                return 2
+        elif muscle_relaxant == "Vecuronium":
+            if dose < 0.1:
+                return 0
+            else:
+                return 1
+        elif muscle_relaxant == "Atracurium" or muscle_relaxant == "Cisatracurium":
+            if dose < 0.4:
+                return 1
+            else:
+                return 2
+        else:
+            return 0
+
     def calculate_hybrid_score():
         score = 0
         # Patient factors
@@ -1169,110 +1271,6 @@ with tab2:
     # ------------------------- DETAILED SCORING BREAKDOWN (Expandable) -------------------------
     st.subheader("Detailed Scoring Breakdown")
     with st.expander("View Individual Parameter Contributions"):
-        # Drug scoring functions
-        def ondansetron_score(dose):
-            if dose == 0:
-                return 0
-            elif dose < 4:
-                return -1
-            elif dose < 8:
-                return -2
-            else:
-                return -3
-
-        def midazolam_score(dose):
-            if dose == 0:
-                return 0
-            elif dose <= 2:
-                return -1
-            elif dose <= 10:
-                return -2
-            else:
-                return -3
-
-        def dexamethasone_score(dose):
-            if dose == 0:
-                return 0
-            elif dose < 4:
-                return -1
-            elif dose <= 10:
-                return -2
-            else:
-                return -3
-
-        def glycopyrrolate_score(dose):
-            if dose == 0:
-                return 0
-            elif dose <= 0.2:
-                return 1
-            else:
-                return 2
-
-        def nalbuphine_score(dose):
-            if dose == 0:
-                return 0
-            elif dose <= 10:
-                return 1
-            else:
-                return 2
-
-        def fentanyl_score(dose):
-            if dose == 0:
-                return 0
-            elif dose <= 100:
-                return 1
-            elif dose <= 500:
-                return 2
-            else:
-                return 3
-
-        def butorphanol_score(dose):
-            if dose == 0:
-                return 0
-            elif dose <= 2:
-                return 1
-            else:
-                return 2
-
-        def pentazocine_score(dose):
-            if dose == 0:
-                return 0
-            elif dose <= 100:
-                return 1
-            elif dose <= 200:
-                return 2
-            else:
-                return 3
-
-        # Muscle relaxant scoring function
-        def muscle_relaxant_score(muscle_relaxant, dose):
-            if muscle_relaxant == "None":
-                return 0
-            elif muscle_relaxant == "Succinylcholine":
-                if dose < 1.5:
-                    return 1
-                else:
-                    return 2
-            elif muscle_relaxant == "Rocuronium":
-                if dose < 0.6:
-                    return 0
-                elif dose <= 1.0:
-                    return 1
-                else:
-                    return 2
-            elif muscle_relaxant == "Vecuronium":
-                if dose < 0.1:
-                    return 0
-                else:
-                    return 1
-            elif muscle_relaxant == "Atracurium" or muscle_relaxant == "Cisatracurium":
-                if dose < 0.4:
-                    return 1
-                else:
-                    return 2
-            else:
-                return 0
-
         # Define the score contribution for each parameter based on the sidebar selection
         parameter_scores = {
             "Female Gender": binary(gender),
