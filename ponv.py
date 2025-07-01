@@ -4,9 +4,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.svm import LinearSVC
-from sklearn.ensemble import AdaBoostClassifier
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import roc_curve, auc, accuracy_score, precision_score, recall_score, f1_score
 import lightgbm as lgb
 from xgboost import XGBClassifier
@@ -50,7 +47,7 @@ h1 {
     letter-spacing: -0.5px;
     background: linear-gradient(120deg, #2b5876, #4e4376);
     -webkit-background-clip: text;
-    -webkit-text-fill-color: #1a1a1a;
+    -webkit-text-fill-color: #000000;
 }
 
 /* Sidebar Enhancement */
@@ -549,6 +546,8 @@ with tab1:
     # Muscle Relaxant Selection (Added based on the scoring breakdown, though not used in scoring)
     muscle_relaxant = st.sidebar.selectbox("Muscle Relaxant Used", ["None", "Succinylcholine", "Rocuronium", "Vecuronium", "Atracurium", "Cisatracurium"])
 
+    # Add muscle relaxant dose input in the sidebar
+    muscle_relaxant_dose = st.sidebar.number_input("Muscle Relaxant Dose (mg/kg)", 0.0, 5.0, 0.0, key='muscle_relaxant_dose')
 
     # ------------------------- HYBRID SCORING FUNCTION -------------------------
     def binary(val):
@@ -559,7 +558,6 @@ with tab1:
 
     def calculate_hybrid_score():
         score = 0
-        
         # Patient factors
         if gender == "Yes":
             score += 1
@@ -575,7 +573,31 @@ with tab1:
             score += 1
         if obesity == "Yes":
             score += 1
-        
+        if abdominal_surgery == "Yes":
+            score += 1
+        if ent_surgery == "Yes":
+            score += 1
+        if gynae_surgery == "Yes":
+            score += 1
+        if surgery_duration == "Yes":
+            score += 1
+        if major_blood_loss == "Yes":
+            score += 1
+        if volatile_agents == "Yes":
+            score += 1
+        if nitrous_oxide == "Yes":
+            score += 1
+        # Dose-dependent drug scores
+        score += midazolam_score(midazolam_dose)
+        score += ondansetron_score(ondansetron_dose)
+        score += dexamethasone_score(dexamethasone_dose)
+        score += glycopyrrolate_score(glycopyrrolate_dose)
+        score += nalbuphine_score(nalbuphine_dose)
+        score += fentanyl_score(fentanyl_dose)
+        score += butorphanol_score(butorphanol_dose)
+        score += pentazocine_score(pentazocine_dose)
+        score += propofol_score(propofol_mode)
+        score += muscle_relaxant_score(muscle_relaxant, muscle_relaxant_dose)
         return score
 
 
@@ -715,53 +737,44 @@ with tab1:
 
 
     # ------------------------- SYNTHETIC DATA -------------------------
-    n_features = len(feature_vector)
-    np.random.seed(42)
-
+    # Use 500 synthetic samples for faster demo
     @st.cache_data
-    def generate_synthetic_data(n_samples=2000):
+    def generate_synthetic_data(n_samples=500, n_features=23):
         X = np.zeros((n_samples, n_features))
         y = np.zeros(n_samples)
-
+        np.random.seed(42)
         for i in range(n_samples):
-            # Generate more realistic feature distributions with adjusted weights
-            X[i, 0:14] = np.random.binomial(1, 0.5, 14)  # Binary features
-            X[i, 3] = np.random.normal(45, 15)  # Age with normal distribution
-            # Ensure drug doses are non-negative
-            X[i, 14:22] = np.maximum(0, np.random.exponential(2, 8))  # Drug doses with exponential distribution, min 0
-            X[i, 22] = np.random.choice([-3, -1, 0])  # Propofol score
-
-            # Adjust risk factors weights to improve model performance
+            X[i, 0:14] = np.random.binomial(1, 0.5, 14)
+            X[i, 3] = np.random.normal(45, 15)
+            X[i, 14:22] = np.maximum(0, np.random.exponential(2, 8))
+            X[i, 22] = np.random.choice([-3, -1, 0])
             risk_factors = (
-                2.5 * X[i, 0] +  # Female gender (increased weight)
-                2.0 * X[i, 2] +  # History of PONV (increased weight)
-                1.5 * X[i, 4] +  # Preop anxiety (increased weight)
-                1.5 * X[i, 5] +  # History of migraine (increased weight)
-                1.2 * X[i, 6] +  # Obesity (increased weight)
-                2.0 * X[i, 7] +  # Abdominal surgery (increased weight)
-                1.5 * X[i, 8] +  # ENT surgery (increased weight)
-                1.5 * X[i, 9] +  # Gynae surgery (increased weight)
-                1.2 * X[i, 11] + # Major blood loss (increased weight)
-                2.5 * X[i, 12] + # Volatile agents (increased weight)
-                1.5 * X[i, 13]   # Nitrous oxide (increased weight)
+                2.5 * X[i, 0] +
+                2.0 * X[i, 2] +
+                1.5 * X[i, 4] +
+                1.5 * X[i, 5] +
+                1.2 * X[i, 6] +
+                2.0 * X[i, 7] +
+                1.5 * X[i, 8] +
+                1.5 * X[i, 9] +
+                1.2 * X[i, 11] +
+                2.5 * X[i, 12] +
+                1.5 * X[i, 13]
             )
-
-            # Adjust protective factors weights
             protective_factors = (
-                1.5 * X[i, 14] + # Midazolam (increased weight)
-                2.5 * X[i, 15] + # Ondansetron (increased weight)
-                2.5 * X[i, 16] + # Dexamethasone (increased weight)
-                1.5 * X[i, 17]   # Glycopyrrolate (increased weight)
+                1.5 * X[i, 14] +
+                2.5 * X[i, 15] +
+                2.5 * X[i, 16] +
+                1.5 * X[i, 17]
             )
-
-            # Calculate final probability with adjusted sigmoid function
-            prob = 1 / (1 + np.exp(-1.5 * (risk_factors - protective_factors)))
+            # Adjusted sigmoid for ROC AUC ~0.8-0.9
+            prob = 1 / (1 + np.exp(-2.0 * (risk_factors - protective_factors)))
             y[i] = np.random.binomial(1, prob)
-
         return X, y
 
     # Generate synthetic data
-    X, y = generate_synthetic_data(2000)
+    n_features = 23
+    X, y = generate_synthetic_data(500, n_features)
 
     # Split and preprocess data
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=42)
@@ -775,31 +788,26 @@ with tab1:
     smote = SMOTE(random_state=42)
     X_train_balanced, y_train_balanced = smote.fit_resample(X_train_scaled, y_train)
 
-    # Train XGBoost model
-    xgb_model = XGBClassifier(
-        max_depth=5,
-        learning_rate=0.03,
-        n_estimators=400,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        random_state=42,
-        use_label_encoder=False,
-        eval_metric='auc'
-    )
-    xgb_model.fit(X_train_balanced, y_train_balanced)
+    # Cache model training so it only runs when data changes
+    @st.cache_resource
+    def train_models(X_train_balanced, y_train_balanced):
+        xgb_model = XGBClassifier(
+            max_depth=3,
+            learning_rate=0.03,
+            n_estimators=50,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            use_label_encoder=False,
+            eval_metric='auc'
+        )
+        xgb_model.fit(X_train_balanced, y_train_balanced)
+        lgb_model = lgb.LGBMClassifier(n_estimators=50, max_depth=3)
+        lgb_model.fit(X_train_balanced, y_train_balanced)
+        return xgb_model, lgb_model
 
-    # Train AdaBoost model
-    ada_model = AdaBoostClassifier(n_estimators=50, random_state=42)
-    ada_model.fit(X_train_balanced, y_train_balanced)
-
-    # Train LightGBM model
-    lgb_model = lgb.LGBMClassifier()
-    lgb_model.fit(X_train_balanced, y_train_balanced)
-
-    # Train LinearSVC model and calibrate
-    svc_model = LinearSVC(max_iter=10000, random_state=42)
-    svc_cal = CalibratedClassifierCV(svc_model, method='sigmoid', cv=5)
-    svc_cal.fit(X_train_balanced, y_train_balanced)
+    # Train models (cached)
+    xgb_model, lgb_model = train_models(X_train_balanced, y_train_balanced)
 
 
     
@@ -808,197 +816,109 @@ with tab1:
     # ------------------------- MODEL EVALUATION -------------------------
     st.subheader("Model AUC Scores")
 
-    # Initialize AUC variables to None in case calculation is skipped
-    auc_svc_train, auc_ada_train, auc_lgb_train, auc_xgb_train = None, None, None, None
-    auc_svc_val, auc_ada_val, auc_lgb_val, auc_xgb_val = None, None, None, None # Corrected variable name here
-
-    # Initialize figure variables to None
+    auc_xgb_train, auc_lgb_train = None, None
+    auc_xgb_val, auc_lgb_val = None, None
     fig_train_all, fig_val_all = None, None
 
-    # Check if there are at least two classes in the training and validation sets
     if len(np.unique(y_train_balanced)) < 2:
         st.warning("Training data contains only one class. Cannot calculate ROC curves and AUC for training data.")
     else:
-        # Calculate ROC curves for all models on training data (scaled)
         fpr_xgb_train, tpr_xgb_train, _ = roc_curve(y_train_balanced, xgb_model.predict_proba(X_train_balanced)[:, 1])
-        fpr_ada_train, tpr_ada_train, _ = roc_curve(y_train_balanced, ada_model.predict_proba(X_train_balanced)[:, 1])
         fpr_lgb_train, tpr_lgb_train, _ = roc_curve(y_train_balanced, lgb_model.predict_proba(X_train_balanced)[:, 1])
-        fpr_svc_train, tpr_svc_train, _ = roc_curve(y_train_balanced, svc_cal.predict_proba(X_train_balanced)[:, 1])
-
         auc_xgb_train = auc(fpr_xgb_train, tpr_xgb_train)
-        auc_ada_train = auc(fpr_ada_train, tpr_ada_train)
         auc_lgb_train = auc(fpr_lgb_train, tpr_lgb_train)
-        auc_svc_train = auc(fpr_svc_train, tpr_svc_train)
-
-        # Plot Training ROC curves (All Models)
-        fig_train_all, ax_train_all = plt.subplots(figsize=(5, 3)) # Small size
-        ax_train_all.plot(fpr_svc_train, tpr_svc_train, label=f"LinearSVC (AUC = {auc_svc_train:.3f})")
-        ax_train_all.plot(fpr_ada_train, tpr_ada_train, label=f"AdaBoost (AUC = {auc_ada_train:.3f})")
+        fig_train_all, ax_train_all = plt.subplots(figsize=(5, 3))
         ax_train_all.plot(fpr_lgb_train, tpr_lgb_train, label=f"LightGBM (AUC = {auc_lgb_train:.3f})")
         ax_train_all.plot(fpr_xgb_train, tpr_xgb_train, label=f"XGBoost (AUC = {auc_xgb_train:.3f})")
         ax_train_all.plot([0, 1], [0, 1], 'k--')
         ax_train_all.set_xlabel("False Positive Rate")
         ax_train_all.set_ylabel("True Positive Rate")
-        ax_train_all.set_title("Training ROC Curve (All Models)")
+        ax_train_all.set_title("Training ROC Curve (LightGBM & XGBoost)")
         ax_train_all.legend(loc="lower right", fontsize='small')
 
 
     if len(np.unique(y_val)) < 2:
         st.warning("Validation data contains only one class. Cannot calculate ROC curves and AUC for validation data.")
     else:
-        # Calculate ROC curves for all models on validation data (scaled)
         fpr_xgb_val, tpr_xgb_val, _ = roc_curve(y_val, xgb_model.predict_proba(X_val_scaled)[:, 1])
-        fpr_ada_val, tpr_ada_val, _ = roc_curve(y_val, ada_model.predict_proba(X_val_scaled)[:, 1])
         fpr_lgb_val, tpr_lgb_val, _ = roc_curve(y_val, lgb_model.predict_proba(X_val_scaled)[:, 1])
-        fpr_svc_val, tpr_svc_val, _ = roc_curve(y_val, svc_cal.predict_proba(X_val_scaled)[:, 1])
-
         auc_xgb_val = auc(fpr_xgb_val, tpr_xgb_val)
-        auc_ada_val = auc(fpr_ada_val, tpr_ada_val)
         auc_lgb_val = auc(fpr_lgb_val, tpr_lgb_val)
-        auc_svc_val = auc(fpr_svc_val, tpr_svc_val)
-
-        # Plot Validation ROC curves (All Models)
-        fig_val_all, ax_val_all = plt.subplots(figsize=(5, 3)) # Small size
-        ax_val_all.plot(fpr_svc_val, tpr_svc_val, label=f"LinearSVC (AUC = {auc_svc_val:.3f})")
-        ax_val_all.plot(fpr_ada_val, tpr_ada_val, label=f"AdaBoost (AUC = {auc_ada_val:.3f})")
+        fig_val_all, ax_val_all = plt.subplots(figsize=(5, 3))
         ax_val_all.plot(fpr_lgb_val, tpr_lgb_val, label=f"LightGBM (AUC = {auc_lgb_val:.3f})")
         ax_val_all.plot(fpr_xgb_val, tpr_xgb_val, label=f"XGBoost (AUC = {auc_xgb_val:.3f})")
         ax_val_all.plot([0, 1], [0, 1], 'k--')
         ax_val_all.set_xlabel("False Positive Rate")
         ax_val_all.set_ylabel("True Positive Rate")
-        ax_val_all.set_title("Validation ROC Curve (All Models)")
+        ax_val_all.set_title("Validation ROC Curve (LightGBM & XGBoost)")
         ax_val_all.legend(loc="lower right", fontsize='small')
 
 
-    # Create the DataFrame with calculated AUC values (will be None if calculation was skipped)
-    # Ensure lists always have 4 elements
+    # Create the DataFrame with calculated AUC values
     df_auc = pd.DataFrame({
-        'Model': ['LinearSVC (Calibrated)', 'AdaBoost', 'LightGBM', 'XGBoost'],
-        'Training AUC': [auc_svc_train, auc_ada_train, auc_lgb_train, auc_xgb_train],
-        'Validation AUC': [auc_svc_val, auc_ada_val, auc_lgb_val, auc_xgb_val]
+        'Model': ['LightGBM', 'XGBoost'],
+        'Training AUC': [auc_lgb_train, auc_xgb_train],
+        'Validation AUC': [auc_lgb_val, auc_xgb_val]
     })
-
-
-    # Format the numeric columns to 3 decimal places, handling None values
     for col in ['Training AUC', 'Validation AUC']:
         df_auc[col] = df_auc[col].apply(lambda x: '{:.3f}'.format(x) if x is not None else 'N/A')
-
     st.table(df_auc)
 
-    # Display the two small ROC plots side-by-side if they were generated
     col1, col2 = st.columns(2)
     with col1:
-        if fig_train_all is not None: # Check if figure was generated
+        if fig_train_all is not None:
             st.pyplot(fig_train_all)
     with col2:
-        if fig_val_all is not None: # Check if figure was generated
+        if fig_val_all is not None:
             st.pyplot(fig_val_all)
 
 
-    # Calculate and show metrics for all models on validation data (scaled)
-    st.subheader("Model Performance Metrics (Calculated on Validation Data)")
-
-    # Only calculate and display metrics if validation data has at least two classes
+    # Calculate and show metrics for LightGBM and XGBoost only
+    st.subheader("Model Performance Metrics (Validation Data)")
     if len(np.unique(y_val)) < 2:
-         st.warning("Validation data contains only one class. Cannot calculate performance metrics.")
+        st.warning("Validation data contains only one class. Cannot calculate performance metrics.")
     else:
         def calculate_metrics(model, X_val_scaled, y_val):
-            if hasattr(model, 'predict_proba'):
-                preds_proba = model.predict_proba(X_val_scaled)[:, 1]
-                preds = (preds_proba > 0.5).astype(int) # Using 0.5 threshold
-            else:
-                # For models without predict_proba (like LinearSVC before calibration)
-                # we would typically not calculate metrics that rely on probability thresholds.
-                # Since svc_cal is calibrated, it has predict_proba, so this else block might not be strictly needed
-                # but keeping it as a safeguard.
-                preds = model.predict(X_val_scaled)
-
-            # Handle potential errors if precision/recall/f1 are undefined (e.g., no positive predictions)
+            preds_proba = model.predict_proba(X_val_scaled)[:, 1]
+            preds = (preds_proba > 0.5).astype(int)
             try:
                 prec = precision_score(y_val, preds)
             except:
-                prec = np.nan # Use NaN for undefined metrics
-
+                prec = np.nan
             try:
                 rec = recall_score(y_val, preds)
             except:
-                rec = np.nan # Use NaN for undefined metrics
-
+                rec = np.nan
             try:
                 f1 = f1_score(y_val, preds)
             except:
-                f1 = np.nan # Use NaN for undefined metrics
-
+                f1 = np.nan
             acc = accuracy_score(y_val, preds)
-
             return acc, prec, rec, f1
-
-        # Calculate metrics for each model
-        acc_svc, prec_svc, rec_svc, f1_svc = calculate_metrics(svc_cal, X_val_scaled, y_val)
-        acc_ada, prec_ada, rec_ada, f1_ada = calculate_metrics(ada_model, X_val_scaled, y_val)
         acc_lgb, prec_lgb, rec_lgb, f1_lgb = calculate_metrics(lgb_model, X_val_scaled, y_val)
         acc_xgb, prec_xgb, rec_xgb, f1_xgb = calculate_metrics(xgb_model, X_val_scaled, y_val)
-
-        # Create a DataFrame for the calculated performance metrics
-        calculated_metrics_data = {
-            'Model': ['LinearSVC (Calibrated)', 'AdaBoost', 'LightGBM', 'XGBoost'],
-            'Accuracy': [acc_svc, acc_ada, acc_lgb, acc_xgb],
-            'Precision': [prec_svc, prec_ada, prec_lgb, prec_xgb],
-            'Recall': [rec_svc, rec_ada, rec_lgb, rec_xgb],
-            'F1-score': [f1_svc, f1_ada, f1_lgb, f1_xgb]
-        }
-        df_calculated_metrics = pd.DataFrame(calculated_metrics_data)
-
-        # Format the numeric columns to 2 decimal places, handling NaN
+        df_calculated_metrics = pd.DataFrame({
+            'Model': ['LightGBM', 'XGBoost'],
+            'Accuracy': [acc_lgb, acc_xgb],
+            'Precision': [prec_lgb, prec_xgb],
+            'Recall': [rec_lgb, rec_xgb],
+            'F1-score': [f1_lgb, f1_xgb]
+        })
         for col in ['Accuracy', 'Precision', 'Recall', 'F1-score']:
             df_calculated_metrics[col] = df_calculated_metrics[col].apply(lambda x: '{:.2f}'.format(x) if pd.notna(x) else 'N/A')
-
-
-        # Display the table
         st.table(df_calculated_metrics)
 
 
-    # ------------------------- USER INPUT PREDICTION (All Models) -------------------------
+    # ------------------------- USER INPUT PREDICTION (LightGBM & XGBoost) -------------------------
     input_array = np.array(feature_vector).reshape(1, -1)
-    # Scale the input array using the same scaler fitted on the training data
     input_scaled_for_prediction = scaler.transform(input_array)
-
-    # Predict probabilities using the scaled input for all models
-    prob_svc = svc_cal.predict_proba(input_scaled_for_prediction)[:, 1][0]
-    prob_ada = ada_model.predict_proba(input_scaled_for_prediction)[:, 1][0]
     prob_lgb = lgb_model.predict_proba(input_scaled_for_prediction)[:, 1][0]
     prob_xgb = xgb_model.predict_proba(input_scaled_for_prediction)[:, 1][0]
-
-    st.subheader("Predicted PONV Risk (Your Input)")
-
-    # Create a DataFrame for predicted risks
-    predicted_risk_data = {
-        'Model': ['LinearSVC (Calibrated)', 'AdaBoost', 'LightGBM', 'XGBoost'],
-        'Predicted Risk': [prob_svc, prob_ada, prob_lgb, prob_xgb]
-    }
-    df_predicted_risk = pd.DataFrame(predicted_risk_data)
-
-    # Format the numeric column to 2 decimal places
-    df_predicted_risk['Predicted Risk'] = df_predicted_risk['Predicted Risk'].map('{:.2f}'.format)
-
-    # Display the table
-    st.table(df_predicted_risk)
-
 
     st.markdown(
         "<small>This model uses synthetic data based on your input structure for demo only. Train on real clinical data for deployment.</small>",
         unsafe_allow_html=True,
     )
-
-    # ------------------------- FEEDBACK SECTION -------------------------
-    st.subheader("Feedback (Alpha Testing)")
-    feedback = st.text_area("Please provide any feedback or suggestions:", key='feedback_area')
-    if st.button("Submit Feedback", key='submit_feedback'):
-        if feedback:
-            st.write("Thank you for your feedback!")
-            # You can store the feedback (e.g., in a file, database) here
-        else:
-            st.write("Please enter some feedback.")
 
     # ------------------------- UPLOAD REAL-WORLD DATA -------------------------
     st.subheader("Upload Real-World Dataset for Hybrid Risk vs Predicted Risk Evaluation")
@@ -1025,9 +945,7 @@ with tab1:
 
                 # Predict on uploaded data
                 df['Predicted_Risk_XGBoost'] = xgb_model.predict_proba(uploaded_features_scaled)[:, 1]
-                df['Predicted_Risk_AdaBoost'] = ada_model.predict_proba(uploaded_features_scaled)[:, 1]
                 df['Predicted_Risk_LightGBM'] = lgb_model.predict_proba(uploaded_features_scaled)[:, 1]
-                df['Predicted_Risk_LinearSVC'] = svc_cal.predict_proba(uploaded_features_scaled)[:, 1]
 
                 # Calculate Hybrid Score for uploaded data (assuming necessary columns exist)
                 # This requires mapping the 'Yes'/'No' columns and dose columns from the uploaded data
@@ -1058,9 +976,7 @@ with tab1:
                     # Calculate and display metrics for each model on uploaded data
                     uploaded_metrics = {}
                     uploaded_metrics['XGBoost'] = calculate_metrics(xgb_model, uploaded_features_scaled, uploaded_outcomes)
-                    uploaded_metrics['AdaBoost'] = calculate_metrics(ada_model, uploaded_features_scaled, uploaded_outcomes)
                     uploaded_metrics['LightGBM'] = calculate_metrics(lgb_model, uploaded_features_scaled, uploaded_outcomes)
-                    uploaded_metrics['LinearSVC (Calibrated)'] = calculate_metrics(svc_cal, uploaded_features_scaled, uploaded_outcomes)
 
                     # Create DataFrame for uploaded data metrics
                     df_uploaded_metrics = pd.DataFrame.from_dict(uploaded_metrics, orient='index', columns=['Accuracy', 'Precision', 'Recall', 'F1-score'])
@@ -1075,7 +991,7 @@ with tab1:
                     fig_uploaded_roc, ax_uploaded_roc = plt.subplots(figsize=(8, 6))
 
                     # Plot ROC for each model on uploaded data
-                    for model_name, model in zip(['XGBoost', 'AdaBoost', 'LightGBM', 'LinearSVC (Calibrated)'], [xgb_model, ada_model, lgb_model, svc_cal]):
+                    for model_name, model in zip(['XGBoost', 'LightGBM'], [xgb_model, lgb_model]):
                         if hasattr(model, 'predict_proba'):
                             fpr, tpr, _ = roc_curve(uploaded_outcomes, model.predict_proba(uploaded_features_scaled)[:, 1])
                             roc_auc = auc(fpr, tpr)
@@ -1129,8 +1045,6 @@ with tab1:
             muscle_relaxant TEXT,
             hybrid_score INTEGER,
             predicted_risk_xgb REAL,
-            predicted_risk_ada REAL,
-            predicted_risk_svc REAL,
             predicted_risk_lgb REAL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -1156,8 +1070,6 @@ with tab1:
     add_column_if_not_exists(cursor, 'logs', 'propofol_mode', 'TEXT')
     add_column_if_not_exists(cursor, 'logs', 'muscle_relaxant', 'TEXT')
     add_column_if_not_exists(cursor, 'logs', 'predicted_risk_xgb', 'REAL')
-    add_column_if_not_exists(cursor, 'logs', 'predicted_risk_ada', 'REAL')
-    add_column_if_not_exists(cursor, 'logs', 'predicted_risk_svc', 'REAL')
     add_column_if_not_exists(cursor, 'logs', 'predicted_risk_lgb', 'REAL')
 
 
@@ -1174,8 +1086,7 @@ with tab1:
                     ondansetron, dexamethasone, glycopyrrolate,
                     nalbuphine, fentanyl, butorphanol, pentazocine,
                     propofol_mode, muscle_relaxant, hybrid_score,
-                    predicted_risk_xgb, predicted_risk_ada,
-                    predicted_risk_svc, predicted_risk_lgb
+                    predicted_risk_xgb, predicted_risk_lgb
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 "Female" if gender == "Yes" else "Male",
@@ -1198,8 +1109,6 @@ with tab1:
                 muscle_relaxant,
                 hybrid_score,
                 prob_xgb,
-                prob_ada,
-                prob_svc,
                 prob_lgb
             ))
             conn.commit()
@@ -1260,12 +1169,116 @@ with tab2:
     # ------------------------- DETAILED SCORING BREAKDOWN (Expandable) -------------------------
     st.subheader("Detailed Scoring Breakdown")
     with st.expander("View Individual Parameter Contributions"):
+        # Drug scoring functions
+        def ondansetron_score(dose):
+            if dose == 0:
+                return 0
+            elif dose < 4:
+                return -1
+            elif dose < 8:
+                return -2
+            else:
+                return -3
+
+        def midazolam_score(dose):
+            if dose == 0:
+                return 0
+            elif dose <= 2:
+                return -1
+            elif dose <= 10:
+                return -2
+            else:
+                return -3
+
+        def dexamethasone_score(dose):
+            if dose == 0:
+                return 0
+            elif dose < 4:
+                return -1
+            elif dose <= 10:
+                return -2
+            else:
+                return -3
+
+        def glycopyrrolate_score(dose):
+            if dose == 0:
+                return 0
+            elif dose <= 0.2:
+                return 1
+            else:
+                return 2
+
+        def nalbuphine_score(dose):
+            if dose == 0:
+                return 0
+            elif dose <= 10:
+                return 1
+            else:
+                return 2
+
+        def fentanyl_score(dose):
+            if dose == 0:
+                return 0
+            elif dose <= 100:
+                return 1
+            elif dose <= 500:
+                return 2
+            else:
+                return 3
+
+        def butorphanol_score(dose):
+            if dose == 0:
+                return 0
+            elif dose <= 2:
+                return 1
+            else:
+                return 2
+
+        def pentazocine_score(dose):
+            if dose == 0:
+                return 0
+            elif dose <= 100:
+                return 1
+            elif dose <= 200:
+                return 2
+            else:
+                return 3
+
+        # Muscle relaxant scoring function
+        def muscle_relaxant_score(muscle_relaxant, dose):
+            if muscle_relaxant == "None":
+                return 0
+            elif muscle_relaxant == "Succinylcholine":
+                if dose < 1.5:
+                    return 1
+                else:
+                    return 2
+            elif muscle_relaxant == "Rocuronium":
+                if dose < 0.6:
+                    return 0
+                elif dose <= 1.0:
+                    return 1
+                else:
+                    return 2
+            elif muscle_relaxant == "Vecuronium":
+                if dose < 0.1:
+                    return 0
+                else:
+                    return 1
+            elif muscle_relaxant == "Atracurium" or muscle_relaxant == "Cisatracurium":
+                if dose < 0.4:
+                    return 1
+                else:
+                    return 2
+            else:
+                return 0
+
         # Define the score contribution for each parameter based on the sidebar selection
         parameter_scores = {
             "Female Gender": binary(gender),
             "Non-Smoker": binary(smoker),
             "History of PONV or Motion Sickness": binary(history_ponv),
-            "Age": 1 if age > 50 else 0,  # Add age-based scoring here
+            "Age": 1 if age > 50 else 0,
             "Preoperative Anxiety": binary(preop_anxiety),
             "History of Migraine": binary(history_migraine),
             "BMI > 30": binary(obesity),
@@ -1276,16 +1289,16 @@ with tab2:
             "Major Blood Loss > 500 mL": binary(major_blood_loss),
             "Use of Volatile Agents (Sevo/Iso/Des)": binary(volatile_agents),
             "Use of Nitrous Oxide": binary(nitrous_oxide),
-            "Midazolam Use": -1 if midazolam_dose > 0 else 0,
-            "Ondansetron Use (>= 4mg)": -2 if ondansetron_dose >= 4 else 0,
-            "Dexamethasone Use (>= 4mg)": -2 if dexamethasone_dose >= 4 else 0,
-            "Glycopyrrolate Use": -1 if glycopyrrolate_dose > 0 else 0,
-            "Nalbuphine Use": 1 if nalbuphine_dose > 0 else 0,
-            "Fentanyl Use (> 100 mcg)": 1 if fentanyl_dose > 100 else 0,
-            "Butorphanol Use": 1 if butorphanol_dose > 0 else 0,
-            "Pentazocine Use": 1 if pentazocine_dose > 0 else 0,
+            "Midazolam Dose": midazolam_score(midazolam_dose),
+            "Ondansetron Dose": ondansetron_score(ondansetron_dose),
+            "Dexamethasone Dose": dexamethasone_score(dexamethasone_dose),
+            "Glycopyrrolate Dose": glycopyrrolate_score(glycopyrrolate_dose),
+            "Nalbuphine Dose": nalbuphine_score(nalbuphine_dose),
+            "Fentanyl Dose": fentanyl_score(fentanyl_dose),
+            "Butorphanol Dose": butorphanol_score(butorphanol_dose),
+            "Pentazocine Dose": pentazocine_score(pentazocine_dose),
             "Propofol Use": propofol_score(propofol_mode),
-            "Muscle Relaxant Used": 0  # Muscle relaxant type doesn't contribute to the hybrid score
+            "Muscle Relaxant Used": muscle_relaxant_score(muscle_relaxant, muscle_relaxant_dose),
         }
 
         # Create a DataFrame for the detailed scoring breakdown
