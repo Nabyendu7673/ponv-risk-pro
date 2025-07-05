@@ -450,12 +450,10 @@ st.set_page_config(layout="wide")
 st.markdown("""
 <style>
 body {
-    background: #18191a !important;
     color: #ffffff !important;
     font-family: 'Inter', sans-serif;
 }
 .main .block-container {
-    background: #23272f !important;
     color: #ffffff !important;
     border-radius: 16px;
     box-shadow: 0 4px 32px rgba(0,0,0,0.25);
@@ -463,7 +461,6 @@ body {
     margin-top: 2rem;
 }
 .stSidebar, .css-1d391kg, .css-1lcbmhc {
-    background: #23272f !important;
     color: #ffffff !important;
 }
 .stButton > button {
@@ -494,13 +491,11 @@ body {
     100% {background-position:0% 50%}
 }
 .card, .hybrid-score-box, .dose-box, .streamlit-expander {
-    background: #23272f !important;
     color: #ffffff !important;
     border-radius: 12px;
     box-shadow: 0 2px 16px rgba(0,0,0,0.25);
 }
 table {
-    background: #23272f !important;
     color: #ffffff !important;
 }
 th, td {
@@ -516,7 +511,6 @@ tr:hover td {
 }
 ::-webkit-scrollbar {
     width: 8px;
-    background: #23272f;
 }
 ::-webkit-scrollbar-thumb {
     background: #444;
@@ -529,7 +523,6 @@ tr:hover td {
 /* General Body Styling */
 body {
     font-family: 'Inter', sans-serif;
-    background-color: #f8f9fa;
     color: #212529;
     line-height: 1.6;
 }
@@ -556,7 +549,6 @@ h1 {
 
 /* Sidebar Enhancement */
 .stSidebar {
-    background-color: #ffffff;
     padding: 2rem;
     border-right: 1px solid rgba(0,0,0,0.1);
     box-shadow: 2px 0 8px rgba(0,0,0,0.05);
@@ -565,7 +557,6 @@ h1 {
 /* Input Fields Enhancement */
 .stSelectbox div[data-baseweb="select"],
 .stNumberInput div[data-baseweb="input"] {
-    background: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
     transition: all 0.3s ease;
@@ -579,8 +570,6 @@ h1 {
 
 /* Hybrid Score Box Enhancement */
 .hybrid-score-box {
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(10px);
     border-radius: 15px;
     padding: 2em;
     margin: 2rem 0;
@@ -683,7 +672,6 @@ table {
     box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     border-radius: 12px;
     overflow: hidden;
-    background: white;
     border: 1px solid #e0e0e0;
 }
 
@@ -762,7 +750,6 @@ caption {
 .streamlit-expander {
     border: 1px solid #e0e0e0;
     border-radius: 10px;
-    background: white;
     transition: all 0.3s ease;
 }
 
@@ -772,7 +759,6 @@ caption {
 
 /* Dose Box Enhancement */
 .dose-box {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     border-radius: 8px;
     padding: 1rem;
     margin: 1rem 0;
@@ -793,7 +779,6 @@ caption {
     align-items: center;
     gap: 20px;
     padding: 30px;
-    background: rgba(255, 255, 255, 0.9);
     border-radius: 15px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.1);
     margin: 30px 0;
@@ -806,7 +791,6 @@ caption {
     width: 90%; /* Use percentage for responsiveness */
     max-width: 600px;
     padding: 20px;
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     border-radius: 10px;
     border: 2px solid #dee2e6;
     text-align: center;
@@ -1079,12 +1063,10 @@ caption {
 
 /* Data Visualization Enhancements */
 .chart-container {
-    background: rgba(255, 255, 255, 0.05);
     border-radius: 12px;
     padding: 20px;
     margin: 15px 0;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
 }
 
 /* Status Indicators */
@@ -1567,7 +1549,6 @@ with tab1:
     st.markdown("""
 <style>
 .risk-meter-container {
-    background: #18191a;
     padding: 20px;
     border-radius: 10px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.4);
@@ -2115,7 +2096,7 @@ with tab1:
 
     # Enhanced logging section with better UI
     st.markdown("""
-    <div style='margin: 20px 0; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 10px; border-left: 4px solid #ff8800;'>
+            <div style='margin: 20px 0; padding: 15px; border-radius: 10px; border-left: 4px solid #ff8800;'>
         <h4 style='margin: 0 0 10px 0; color: #ff8800;'>📝 Data Logging</h4>
         <p style='margin: 0; font-size: 0.9em; color: #ccc;'>Log this assessment for future reference and analysis.</p>
     </div>
@@ -2230,8 +2211,8 @@ with tab1:
 
     # Add a note about database persistence
     st.markdown("""
-    <div style='font-size: 0.8em; text-align: center; color: #6c757d; margin: 20px 0;'>
-        <div class='interactive-card' style='padding: 15px; background: rgba(255,255,255,0.05); border-radius: 10px;'>
+            <div style='font-size: 0.8em; text-align: center; color: #6c757d; margin: 20px 0;'>
+            <div class='interactive-card' style='padding: 15px; border-radius: 10px;'>
             <h5 style='margin: 0 0 10px 0; color: #ff8800;'>💾 Data Persistence</h5>
             <p style='margin: 0; font-size: 0.9em;'>Data is logged to a local SQLite file (`ponv_logs.db`). This file will persist as long as the Streamlit application's data directory is maintained.</p>
         </div>
@@ -2240,7 +2221,7 @@ with tab1:
 
     # ------------------------- PDF REPORT GENERATION -------------------------
     st.markdown("""
-    <div style='margin: 30px 0; padding: 20px; background: linear-gradient(135deg, #2b5876, #4e4376); border-radius: 15px; border-left: 5px solid #ff8800;'>
+            <div style='margin: 30px 0; padding: 20px; border-radius: 15px; border-left: 5px solid #ff8800;'>
         <h3 style='margin: 0 0 15px 0; color: #fff; text-align: center;'>📄 Generate Comprehensive PDF Report</h3>
         <p style='margin: 0; font-size: 1em; line-height: 1.6; color: #fff; text-align: center;'>
             Download a detailed report containing all patient data, risk assessments, model predictions, graphs, and clinical recommendations.
@@ -2486,7 +2467,7 @@ with tab1:
     
     with col2:
         st.markdown("""
-        <div style='padding: 20px; background: rgba(255,255,255,0.05); border-radius: 10px; border-left: 4px solid #ff8800;'>
+        <div style='padding: 20px; border-radius: 10px; border-left: 4px solid #ff8800;'>
             <h4 style='margin: 0 0 10px 0; color: #ff8800;'>📋 Report Contents</h4>
             <ul style='margin: 0; padding-left: 20px; color: #fff;'>
                 <li>Executive Summary</li>
@@ -2513,7 +2494,7 @@ with tab1:
 
     # ------------------------- DISCLAIMER -------------------------
     st.markdown("""
-    <div style='margin: 30px 0; padding: 20px; background: #18191a; border-radius: 15px; border-left: 5px solid #fff;'>
+            <div style='margin: 30px 0; padding: 20px; border-radius: 15px; border-left: 5px solid #fff;'>
         <div style='display: flex; align-items: center; margin-bottom: 10px;'>
             <div style='font-size: 1.5em; margin-right: 10px; color: #fff;'>⚠️</div>
             <h4 style='margin: 0; color: #ff3333; font-family: Arial, Helvetica, sans-serif; font-weight: 700;'>Medical Disclaimer</h4>
@@ -2789,7 +2770,7 @@ with tab4:
 
 with tab5:
     st.markdown("""
-    <div style='background: #000; padding: 30px 10px 30px 10px; border-radius: 16px; box-shadow: 0 4px 32px rgba(0,0,0,0.25);'>
+    <div style='padding: 30px 10px 30px 10px; border-radius: 16px; box-shadow: 0 4px 32px rgba(0,0,0,0.25);'>
         <div style='font-size:2.2em; font-weight:800; color:#fff; text-align:center; margin-bottom:0.5em;'>Global Feature Importance (LightGBM)</div>
         <div style='font-size:1.1em; color:#fff; text-align:center; margin-bottom:1em;'>This section shows which variables have the highest global association with the model's predictions, based on LightGBM's feature importances.</div>
     """, unsafe_allow_html=True)
