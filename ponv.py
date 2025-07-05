@@ -1117,10 +1117,100 @@ caption {
 </style>
 """, unsafe_allow_html=True)
 
+# Add glass effect tab styling with centering and click highlighting
+st.markdown("""
+<style>
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+    margin-bottom: 30px;
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 5px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    color: #ffffff;
+    font-weight: 500;
+    font-size: 16px;
+    padding: 15px 25px;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 8px;
+    margin-right: 5px;
+    position: relative;
+    overflow: hidden;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.stTabs [data-baseweb="tab"]:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
+}
+
+.stTabs [aria-selected="true"] {
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.2)) !important;
+    border: 2px solid rgba(255, 255, 255, 0.6) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 20px rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+    animation: tabGlow 2s ease-in-out infinite alternate;
+    margin-top: 2px;
+    z-index: 10;
+}
+
+.stTabs [aria-selected="true"]:hover {
+    color: #ffffff !important;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.3)) !important;
+    transform: translateY(-2px);
+}
+
+@keyframes tabGlow {
+    0% {
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 20px rgba(255, 255, 255, 0.2);
+    }
+    100% {
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 30px rgba(255, 255, 255, 0.4);
+    }
+}
+
+.stTabs [aria-selected="true"]::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        left: -100%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
 # Add tabs for different views
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Main Interface",
-    "Detailed Scoring Guide",
+    "Detailed Scoring Guide", 
     "Model Training Timeline and Methodological Summary",
     "References",
     "Global Feature Importance"
@@ -1128,7 +1218,44 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
 with tab1:
     st.markdown("""
-    <div style='font-size:3em; font-weight:800; color:#fff; text-align:center; margin-bottom:0.2em; margin-top:0.2em;'>PONV RISK PRO</div>
+    <style>
+    @keyframes float {
+        0% {
+            transform: translateY(0px);
+        }
+        50% {
+            transform: translateY(-10px);
+        }
+        100% {
+            transform: translateY(0px);
+        }
+    }
+    
+    @keyframes glow {
+        0% {
+            text-shadow: 0 0 3px #28a745, 0 0 6px #28a745;
+        }
+        50% {
+            text-shadow: 0 0 5px #28a745, 0 0 10px #28a745;
+        }
+        100% {
+            text-shadow: 0 0 3px #28a745, 0 0 6px #28a745;
+        }
+    }
+    
+    .floating-title {
+        font-size: 3em;
+        font-weight: 800;
+        color: #fff;
+        text-align: center;
+        margin-bottom: 0.2em;
+        margin-top: 0.2em;
+        animation: float 3s ease-in-out infinite, glow 2s ease-in-out infinite;
+        display: inline-block;
+        width: 100%;
+    }
+    </style>
+    <div class='floating-title'>PONV RISK PRO</div>
     """, unsafe_allow_html=True)
 
     # Centered text
@@ -1154,7 +1281,7 @@ with tab1:
     # ------------------------- PATIENT FACTORS -------------------------
     st.sidebar.markdown("""
     <div style='font-weight: 600; color: #ff8800; margin: 15px 0 10px 0; border-bottom: 2px solid #ff8800; padding-bottom: 5px;'>
-        👤 Patient Factors
+        Patient Factors
     </div>
     """, unsafe_allow_html=True)
     
@@ -1169,7 +1296,7 @@ with tab1:
     # ------------------------- SURGICAL FACTORS -------------------------
     st.sidebar.markdown("""
     <div style='font-weight: 600; color: #ff8800; margin: 15px 0 10px 0; border-bottom: 2px solid #ff8800; padding-bottom: 5px;'>
-        🏥 Surgical Factors
+        Surgical Factors
     </div>
     """, unsafe_allow_html=True)
     
@@ -1184,7 +1311,7 @@ with tab1:
     # ------------------------- DRUG FACTORS (WITH DOSE) -------------------------
     st.sidebar.markdown("""
     <div style='font-weight: 600; color: #ff8800; margin: 15px 0 10px 0; border-bottom: 2px solid #ff8800; padding-bottom: 5px;'>
-        💊 Drug Administration (Specify Dose)
+        Drug Administration (Specify Dose)
     </div>
     """, unsafe_allow_html=True)
 
@@ -1849,7 +1976,7 @@ with tab1:
     # Enhanced table display with status indicators
     st.markdown("""
     <div class='chart-container'>
-        <h4 style='margin-bottom: 15px; color: #ff8800;'>📊 Model Performance Metrics</h4>
+        <h4 style='margin-bottom: 15px; color: #ff8800;'>Model Performance Metrics</h4>
     """, unsafe_allow_html=True)
     
     # Create styled table with status indicators
@@ -2141,7 +2268,7 @@ with tab1:
                     ))
                     conn.commit()
                     st.markdown("""
-                    <div class='success-message'>
+                    <div style='color: #000000; font-family: Arial, sans-serif; font-size: 14px; padding: 15px; border-radius: 8px; margin: 10px 0; background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border-left: 5px solid #28a745;'>
                         ✅ <strong>Entry logged successfully!</strong><br>
                         <small>Data saved to local database for future analysis.</small>
                     </div>
@@ -2170,7 +2297,7 @@ with tab1:
                     df_log = pd.DataFrame(rows, columns=columns)
                     
                     st.markdown("""
-                    <div class='success-message'>
+                    <div style='color: #000000; font-family: Arial, sans-serif; font-size: 14px; padding: 15px; border-radius: 8px; margin: 10px 0; background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border-left: 5px solid #28a745;'>
                         📋 <strong>Database Entries Loaded</strong><br>
                         <small>Found {} entries in the database.</small>
                     </div>
@@ -2445,7 +2572,7 @@ with tab1:
                     )
                     
                     st.markdown("""
-                    <div class='success-message'>
+                    <div style='color: #ffffff; font-family: Arial, sans-serif; font-size: 14px; padding: 15px; border-radius: 8px; margin: 10px 0;'>
                         ✅ <strong>PDF Report Generated Successfully!</strong><br>
                         <small>The comprehensive report includes all patient data, risk assessments, model predictions, graphs, and clinical recommendations.</small>
                     </div>
