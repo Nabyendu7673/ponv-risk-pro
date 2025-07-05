@@ -2612,11 +2612,11 @@ with tab1:
         """, unsafe_allow_html=True)
 
     # Add floating action button for quick actions
-    st.markdown("""
-    <div class='fab' onclick='window.scrollTo({top: 0, behavior: "smooth"})' title='Scroll to Top'>
-        ↑
-    </div>
-    """, unsafe_allow_html=True)
+    # st.markdown("""
+    # <div class='fab' onclick='window.scrollTo({top: 0, behavior: "smooth"})' title='Scroll to Top'>
+    #     ↑
+    # </div>
+    # """, unsafe_allow_html=True)
 
 
     # ------------------------- DISCLAIMER -------------------------
