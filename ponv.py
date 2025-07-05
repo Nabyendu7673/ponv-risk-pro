@@ -11,6 +11,436 @@ from imblearn.over_sampling import SMOTE
 import streamlit.components.v1 as components # Import components for embedding HTML/JS
 import sqlite3 # Import sqlite3 for database operations
 import datetime # Import datetime for timestamp
+import matplotlib.cm as cm
+
+# Add PDF generation imports
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+import io
+import base64
+from PIL import Image as PILImage
+import tempfile
+import os
+
+# ------------------------- PDF REPORT GENERATION FUNCTION -------------------------
+def generate_pdf_report(patient_data, hybrid_score, risk_category, model_predictions, 
+                       feature_importance_fig, roc_fig_train, roc_fig_val, 
+                       performance_metrics, feature_breakdown):
+    """
+    Generate a comprehensive PDF report with all patient data, graphs, and analysis
+    """
+    # Create a temporary file for the PDF
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+        pdf_path = tmp_file.name
+    
+    # Create the PDF document
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4, rightMargin=72, leftMargin=72, 
+                           topMargin=72, bottomMargin=72)
+    
+    # Get styles
+    styles = getSampleStyleSheet()
+    
+    # Create custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        textColor=colors.darkblue
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=16,
+        spaceAfter=12,
+        spaceBefore=20,
+        textColor=colors.darkblue
+    )
+    
+    subheading_style = ParagraphStyle(
+        'CustomSubHeading',
+        parent=styles['Heading3'],
+        fontSize=14,
+        spaceAfter=8,
+        spaceBefore=12,
+        textColor=colors.darkgreen
+    )
+    
+    normal_style = ParagraphStyle(
+        'CustomNormal',
+        parent=styles['Normal'],
+        fontSize=11,
+        spaceAfter=6,
+        leading=14
+    )
+    
+    # Start building the story (content)
+    story = []
+    temp_image_paths = []  # <-- Track temp images for later cleanup
+    
+    # Title Page
+    story.append(Paragraph("PONV RISK PRO", title_style))
+    story.append(Paragraph("Postoperative Nausea and Vomiting Risk Assessment Report", 
+                          styles['Heading2']))
+    story.append(Spacer(1, 20))
+    story.append(Paragraph(f"Generated on: {datetime.datetime.now().strftime('%B %d, %Y at %I:%M %p')}", 
+                          normal_style))
+    story.append(Paragraph("An initiative of MKCG Medical College & Hospital - MKCG MedAI Labs", 
+                          normal_style))
+    story.append(PageBreak())
+    
+    # Executive Summary
+    story.append(Paragraph("EXECUTIVE SUMMARY", heading_style))
+    story.append(Paragraph(f"<b>Patient Risk Assessment:</b> {risk_category}", normal_style))
+    story.append(Paragraph(f"<b>Hybrid Risk Score:</b> {hybrid_score}", normal_style))
+    story.append(Paragraph(f"<b>AI Model Predictions:</b>", normal_style))
+    story.append(Paragraph(f"• LightGBM Risk Probability: {model_predictions['lightgbm']:.3f}", normal_style))
+    story.append(Paragraph(f"• XGBoost Risk Probability: {model_predictions['xgboost']:.3f}", normal_style))
+    story.append(Spacer(1, 20))
+    
+    # Patient Information
+    story.append(Paragraph("PATIENT INFORMATION", heading_style))
+    
+    # Create patient info table
+    patient_info_data = [
+        ['Parameter', 'Value'],
+        ['Gender', patient_data['gender']],
+        ['Age', str(patient_data['age'])],
+        ['Smoking Status', 'Non-Smoker' if patient_data['smoker'] == 'Yes' else 'Smoker'],
+        ['History of PONV', patient_data['history_ponv']],
+        ['Preoperative Anxiety', patient_data['preop_anxiety']],
+        ['History of Migraine', patient_data['history_migraine']],
+        ['BMI > 30', patient_data['obesity']],
+    ]
+    
+    patient_table = Table(patient_info_data, colWidths=[2*inch, 3*inch])
+    patient_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+    ]))
+    story.append(patient_table)
+    story.append(Spacer(1, 20))
+    
+    # Surgical Information
+    story.append(Paragraph("SURGICAL INFORMATION", heading_style))
+    
+    surgical_info_data = [
+        ['Parameter', 'Value'],
+        ['Abdominal/Laparoscopic Surgery', patient_data['abdominal_surgery']],
+        ['ENT/Neurosurgery/Ophthalmic', patient_data['ent_surgery']],
+        ['Gynecological/Breast Surgery', patient_data['gynae_surgery']],
+        ['Surgery Duration > 60 min', patient_data['surgery_duration']],
+        ['Major Blood Loss > 500 mL', patient_data['major_blood_loss']],
+        ['Use of Volatile Agents', patient_data['volatile_agents']],
+        ['Use of Nitrous Oxide', patient_data['nitrous_oxide']],
+    ]
+    
+    surgical_table = Table(surgical_info_data, colWidths=[2*inch, 3*inch])
+    surgical_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+    ]))
+    story.append(surgical_table)
+    story.append(Spacer(1, 20))
+    
+    # Drug Administration
+    story.append(Paragraph("DRUG ADMINISTRATION", heading_style))
+    
+    drug_info_data = [
+        ['Drug', 'Dose', 'Route'],
+        ['Ondansetron', f"{patient_data['ondansetron_dose']} mg", 'IV'],
+        ['Midazolam', f"{patient_data['midazolam_dose']} mg", 'IV'],
+        ['Dexamethasone', f"{patient_data['dexamethasone_dose']} mg", 'IV'],
+        ['Glycopyrrolate', f"{patient_data['glycopyrrolate_dose']} mg", 'IV'],
+        ['Nalbuphine', f"{patient_data['nalbuphine_dose']} mg", 'IV'],
+        ['Fentanyl', f"{patient_data['fentanyl_dose']} mcg", 'IV'],
+        ['Butorphanol', f"{patient_data['butorphanol_dose']} mg", 'IV'],
+        ['Pentazocine', f"{patient_data['pentazocine_dose']} mg", 'IV'],
+        ['Propofol Mode', patient_data['propofol_mode'], ''],
+        ['Muscle Relaxant', f"{patient_data['muscle_relaxant']} ({patient_data['muscle_relaxant_dose']} mg/kg)", ''],
+    ]
+    
+    drug_table = Table(drug_info_data, colWidths=[1.5*inch, 1.5*inch, 1*inch])
+    drug_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+    ]))
+    story.append(drug_table)
+    story.append(PageBreak())
+    
+    # Risk Assessment Results
+    story.append(Paragraph("RISK ASSESSMENT RESULTS", heading_style))
+    
+    # Risk category with color coding
+    risk_color = {
+        "Very Low Risk": colors.green,
+        "Low Risk": colors.blue,
+        "Moderate Risk": colors.orange,
+        "High Risk": colors.red,
+        "Very High Risk": colors.darkred
+    }
+    
+    risk_data = [
+        ['Assessment Type', 'Result', 'Risk Level'],
+        ['Hybrid Risk Score', str(hybrid_score), risk_category],
+        ['LightGBM Prediction', f"{model_predictions['lightgbm']:.3f}", 
+         "High" if model_predictions['lightgbm'] > 0.5 else "Low"],
+        ['XGBoost Prediction', f"{model_predictions['xgboost']:.3f}", 
+         "High" if model_predictions['xgboost'] > 0.5 else "Low"],
+    ]
+    
+    risk_table = Table(risk_data, colWidths=[2*inch, 1.5*inch, 1.5*inch])
+    risk_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('BACKGROUND', (2, 1), (2, 1), risk_color.get(risk_category, colors.grey)),
+        ('BACKGROUND', (2, 2), (2, 2), colors.green if model_predictions['lightgbm'] <= 0.5 else colors.red),
+        ('BACKGROUND', (2, 3), (2, 3), colors.green if model_predictions['xgboost'] <= 0.5 else colors.red),
+    ]))
+    story.append(risk_table)
+    story.append(Spacer(1, 20))
+    
+    # Feature Importance Plot
+    if feature_importance_fig is not None:
+        story.append(Paragraph("FEATURE IMPORTANCE ANALYSIS", heading_style))
+        story.append(Paragraph("The following chart shows the relative importance of different factors in predicting PONV risk:", normal_style))
+        
+        # Save the matplotlib figure to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_img:
+            feature_importance_fig.savefig(tmp_img.name, dpi=300, bbox_inches='tight', facecolor='white')
+            img_path = tmp_img.name
+        
+        # Add the image to the PDF
+        img = Image(img_path, width=6*inch, height=4*inch)
+        story.append(img)
+        story.append(Spacer(1, 20))
+        
+        # Defer cleanup until after PDF is built
+        temp_image_paths.append(img_path)
+    
+    # ROC Curves
+    if roc_fig_train is not None or roc_fig_val is not None:
+        story.append(Paragraph("MODEL PERFORMANCE - ROC CURVES", heading_style))
+        story.append(Paragraph("Receiver Operating Characteristic (ROC) curves showing model performance:", normal_style))
+        
+        # Training ROC
+        if roc_fig_train is not None:
+            story.append(Paragraph("Training Data ROC Curve:", subheading_style))
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_img:
+                roc_fig_train.savefig(tmp_img.name, dpi=300, bbox_inches='tight', facecolor='white')
+                img_path = tmp_img.name
+            
+            img = Image(img_path, width=5*inch, height=3*inch)
+            story.append(img)
+            story.append(Spacer(1, 10))
+            temp_image_paths.append(img_path)
+        
+        # Validation ROC
+        if roc_fig_val is not None:
+            story.append(Paragraph("Validation Data ROC Curve:", subheading_style))
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_img:
+                roc_fig_val.savefig(tmp_img.name, dpi=300, bbox_inches='tight', facecolor='white')
+                img_path = tmp_img.name
+            
+            img = Image(img_path, width=5*inch, height=3*inch)
+            story.append(img)
+            story.append(Spacer(1, 20))
+            temp_image_paths.append(img_path)
+    
+    # Performance Metrics
+    if performance_metrics is not None:
+        story.append(Paragraph("MODEL PERFORMANCE METRICS", heading_style))
+        
+        # Create performance metrics table
+        metrics_data = [['Model', 'Accuracy', 'Precision', 'Recall', 'F1-Score']]
+        for model_name, metrics in performance_metrics.items():
+            metrics_data.append([
+                model_name,
+                f"{metrics['accuracy']:.3f}",
+                f"{metrics['precision']:.3f}",
+                f"{metrics['recall']:.3f}",
+                f"{metrics['f1']:.3f}"
+            ])
+        
+        metrics_table = Table(metrics_data, colWidths=[1.5*inch, 1*inch, 1*inch, 1*inch, 1*inch])
+        metrics_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ]))
+        story.append(metrics_table)
+        story.append(Spacer(1, 20))
+    
+    # Feature Breakdown
+    if feature_breakdown is not None:
+        story.append(Paragraph("DETAILED SCORING BREAKDOWN", heading_style))
+        story.append(Paragraph("Individual contribution of each factor to the risk score:", normal_style))
+        
+        # Create feature breakdown table
+        breakdown_data = [['Factor', 'Contribution', 'Impact']]
+        for factor, score in feature_breakdown.items():
+            impact = "Risk Increase" if score > 0 else "Risk Decrease" if score < 0 else "Neutral"
+            breakdown_data.append([factor, str(score), impact])
+        
+        breakdown_table = Table(breakdown_data, colWidths=[3*inch, 1*inch, 1.5*inch])
+        breakdown_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ]))
+        story.append(breakdown_table)
+        story.append(Spacer(1, 20))
+    
+    # Clinical Recommendations
+    story.append(Paragraph("CLINICAL RECOMMENDATIONS", heading_style))
+    
+    if risk_category == "Moderate Risk":
+        recommendations = [
+            "• Dual prophylaxis is recommended",
+            "• Ondansetron 4–8 mg IV at end of surgery",
+            "• Dexamethasone 4 mg IV at induction",
+            "• Consider Midazolam 1–2 mg IV if preoperative anxiety present",
+            "• Use TIVA with Propofol instead of volatile agents",
+            "• Minimize opioid use and use multimodal analgesia",
+            "• Avoid Nitrous Oxide",
+            "• Ensure adequate hydration and gastric decompression",
+            "• Monitor in PACU for >30 minutes"
+        ]
+    elif risk_category in ["High Risk", "Very High Risk"]:
+        recommendations = [
+            "• Multimodal prevention is mandatory",
+            "• Triple Therapy: Ondansetron 4–8 mg IV + Dexamethasone 4–8 mg IV + NK1 receptor antagonist",
+            "• Scopolamine patch 1.5 mg transdermally",
+            "• Consider Droperidol 0.625–1.25 mg IV if QT prolongation not present",
+            "• Mandatory Propofol-based TIVA",
+            "• Use opioid-sparing strategies with nerve blocks or adjuncts",
+            "• Avoid volatile agents and N2O unless absolutely necessary",
+            "• Extended PACU observation for at least 2 hours",
+            "• Have immediate rescue medications available",
+            "• Provide discharge prescription for anti-emetics"
+        ]
+    else:  # Low or Very Low Risk
+        recommendations = [
+            "• Routine pharmacological prophylaxis may not be required",
+            "• Focus on minimizing emetogenic stimuli",
+            "• Avoid volatile agents/N2O when possible",
+            "• Consider regional techniques",
+            "• Optimize hydration and reduce opioid use"
+        ]
+    
+    for rec in recommendations:
+        story.append(Paragraph(rec, normal_style))
+    
+    story.append(Spacer(1, 20))
+    
+    # Rescue Therapy
+    story.append(Paragraph("RESCUE THERAPY (for breakthrough PONV)", subheading_style))
+    rescue_therapy = [
+        "First-line Rescue:",
+        "• Metoclopramide 10 mg IV",
+        "• Promethazine 12.5–25 mg IV",
+        "",
+        "Second-line Rescue:",
+        "• Scopolamine patch (if not previously used)",
+        "• Haloperidol 0.5–1 mg IV (if QTc is normal)",
+        "",
+        "Important: Do not repeat the same class used for prophylaxis"
+    ]
+    
+    for therapy in rescue_therapy:
+        if therapy.startswith("•"):
+            story.append(Paragraph(therapy, normal_style))
+        elif therapy == "":
+            story.append(Spacer(1, 6))
+        else:
+            story.append(Paragraph(therapy, subheading_style))
+    
+    story.append(PageBreak())
+    
+    # Disclaimer and References
+    story.append(Paragraph("MEDICAL DISCLAIMER", heading_style))
+    disclaimer_text = """
+    This application is for informational and educational purposes only and should not be considered a substitute for professional medical advice. The predictions and recommendations provided are based on statistical models and should be used as decision support tools only. Always consult with a qualified healthcare provider for diagnosis and treatment decisions.
+    
+    Developed by: MKCG Medical College & Hospital - MKCG MedAI Labs
+    Last Updated: December 2024
+    """
+    story.append(Paragraph(disclaimer_text, normal_style))
+    
+    story.append(Spacer(1, 20))
+    
+    story.append(Paragraph("REFERENCES", heading_style))
+    references = [
+        "1. Apfel CC, et al. A simplified risk score for predicting postoperative nausea and vomiting. Anesthesiology 1999;91:693–700.",
+        "2. Koivuranta M, et al. A survey of postoperative nausea and vomiting. Anaesthesia 1997;52:443–449.",
+        "3. Fourth Consensus Guidelines for the Management of Postoperative Nausea and Vomiting. Anesth Analg 2020;131:411-448.",
+        "4. Gan TJ, et al. Consensus guidelines for the management of postoperative nausea and vomiting. Anesth Analg 2014;118:85-113."
+    ]
+    
+    for ref in references:
+        story.append(Paragraph(ref, normal_style))
+    
+    # Build the PDF
+    doc.build(story)
+    
+    # Clean up all temp images after PDF is built
+    for img_path in temp_image_paths:
+        try:
+            os.unlink(img_path)
+        except Exception:
+            pass
+    
+    return pdf_path
+
+# ------------------------- END PDF REPORT GENERATION FUNCTION -------------------------
+
+
 
 # Core Setup and UI
 st.set_page_config(layout="wide")
@@ -19,6 +449,80 @@ st.set_page_config(layout="wide")
 # This block contains all the CSS rules, including those for the flowchart
 st.markdown("""
 <style>
+body {
+    background: #18191a !important;
+    color: #ffffff !important;
+    font-family: 'Inter', sans-serif;
+}
+.main .block-container {
+    background: #23272f !important;
+    color: #ffffff !important;
+    border-radius: 16px;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.25);
+    padding: 2.5rem 2rem;
+    margin-top: 2rem;
+}
+.stSidebar, .css-1d391kg, .css-1lcbmhc {
+    background: #23272f !important;
+    color: #ffffff !important;
+}
+.stButton > button {
+    background: linear-gradient(90deg, #ffb366 0%, #ff8800 100%);
+    color: #18191a;
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+    transition: 0.2s;
+}
+.stButton > button:hover {
+    background: linear-gradient(90deg, #ff8800 0%, #ffb366 100%);
+    color: #fff;
+}
+.animated-title {
+    font-size: 4em;
+    font-weight: 800;
+    text-align: center;
+    color: #ffffff !important;
+    text-shadow: 0 2px 16px #ff8800, 0 0px 2px #fff;
+    letter-spacing: -1px;
+    margin-bottom: 0.2em;
+    margin-top: 0.2em;
+}
+@keyframes gradientMove {
+    0% {background-position:0% 50%}
+    50% {background-position:100% 50%}
+    100% {background-position:0% 50%}
+}
+.card, .hybrid-score-box, .dose-box, .streamlit-expander {
+    background: #23272f !important;
+    color: #ffffff !important;
+    border-radius: 12px;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.25);
+}
+table {
+    background: #23272f !important;
+    color: #ffffff !important;
+}
+th, td {
+    border-color: #444 !important;
+    color: #ffffff !important;
+}
+tr:nth-child(even) {
+    background-color: #202124 !important;
+}
+tr:hover td {
+    background-color: #333 !important;
+    color: #ffffff !important;
+}
+::-webkit-scrollbar {
+    width: 8px;
+    background: #23272f;
+}
+::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+}
+
 /* Import professional fonts */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
@@ -91,24 +595,24 @@ h1 {
 
 /* Risk Category Styling Enhancement */
 .very-low-risk {
-    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
-    border-left: 5px solid #28a745;
+    background: #2ecc40 !important;
+    color: #fff !important;
 }
 .low-risk {
-    background: linear-gradient(135deg, #cce5ff 0%, #b8daff 100%);
-    border-left: 5px solid #007bff;
+    background: #3498db !important;
+    color: #fff !important;
 }
 .moderate-risk {
-    background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
-    border-left: 5px solid #ffc107;
+    background: #ffe066 !important;
+    color: #18191a !important;
 }
 .high-risk {
-    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
-    border-left: 5px solid #dc3545;
+    background: #e74c3c !important;
+    color: #fff !important;
 }
 .very-high-risk {
-    background: linear-gradient(135deg, #e2e3e5 0%, #d6d8db 100%);
-    border-left: 5px solid #343a40;
+    background: #636363 !important;
+    color: #fff !important;
 }
 
 /* Recommendation Header Enhancement */
@@ -185,8 +689,8 @@ table {
 
 /* Table Header Enhancement */
 th {
-    background: #FFE4C4;  /* Light orange (Bisque) background */
-    color: #664433;  /* Dark brown text for contrast */
+    background: #18191a !important;
+    color: #ffffff !important;
     font-weight: 600;
     text-transform: uppercase;
     font-size: 0.9em;
@@ -276,7 +780,7 @@ caption {
 }
 
 .dose-info {
-    color: #4e4376;
+    color: #ffffff !important;
     font-weight: 500;
     font-size: 0.9em;
 }
@@ -351,14 +855,299 @@ caption {
     line-height: 1.5;
 }
 /* --- End Flowchart CSS --- */
+
+/* Loading Animation */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #ff8800;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 10px;
+}
+
+.loading-text {
+    animation: pulse 2s infinite;
+    color: #ff8800;
+    font-weight: 600;
+}
+
+/* Progress Bar Enhancement */
+.stProgress > div > div > div > div {
+    background-color: #ff8800 !important;
+}
+
+/* Success/Error Message Animations */
+@keyframes slideIn {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.success-message {
+    animation: slideIn 0.5s ease-out;
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border-left: 5px solid #28a745;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+.error-message {
+    animation: slideIn 0.5s ease-out;
+    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    border-left: 5px solid #dc3545;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+/* Card Hover Effects */
+.interactive-card {
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border: 2px solid transparent;
+}
+
+.interactive-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    border-color: #ff8800;
+}
+
+/* Gradient Text Animation */
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.gradient-text {
+    background: linear-gradient(-45deg, #ff8800, #ffb366, #ff6b35, #ff8800);
+    background-size: 400% 400%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradientShift 3s ease infinite;
+    font-weight: 700;
+}
+
+/* Floating Action Button */
+.fab {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #ff8800, #ffb366);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 24px;
+    box-shadow: 0 4px 15px rgba(255, 136, 0, 0.4);
+    transition: all 0.3s ease;
+    z-index: 1000;
+}
+
+.fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(255, 136, 0, 0.6);
+}
+
+/* Tooltip Enhancement */
+.tooltip {
+    position: relative;
+    display: inline-block;
+}
+
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 200px;
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 8px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -100px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 12px;
+}
+
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Sidebar Section Headers */
+.sidebar-section {
+    background: linear-gradient(135deg, #2b5876, #4e4376);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin: 15px 0 10px 0;
+    font-weight: 600;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Input Field Focus Effects */
+.stSelectbox div[data-baseweb="select"]:focus-within,
+.stNumberInput div[data-baseweb="input"]:focus-within {
+    border-color: #ff8800 !important;
+    box-shadow: 0 0 0 3px rgba(255, 136, 0, 0.2) !important;
+    transform: scale(1.02);
+}
+
+/* Risk Score Visualization */
+.risk-meter {
+    width: 100%;
+    height: 20px;
+    background: linear-gradient(90deg, #2ecc40 0%, #3498db 25%, #ffe066 50%, #e74c3c 75%, #636363 100%);
+    border-radius: 10px;
+    position: relative;
+    margin: 10px 0;
+    overflow: hidden;
+}
+
+.risk-indicator {
+    position: absolute;
+    top: -2px;
+    width: 4px;
+    height: 24px;
+    background: #fff;
+    border-radius: 2px;
+    box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    transition: left 0.5s ease;
+}
+
+/* Notification Badge */
+.notification-badge {
+    background: #e74c3c;
+    color: white;
+    border-radius: 50%;
+    padding: 2px 6px;
+    font-size: 10px;
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 15px;
+    text-align: center;
+}
+
+/* Responsive Design Improvements */
+@media (max-width: 768px) {
+    .main .block-container {
+        padding: 1rem !important;
+        margin-top: 1rem !important;
+    }
+    
+    .animated-title {
+        font-size: 2.5em !important;
+    }
+    
+    .sidebar-section {
+        font-size: 0.9em;
+        padding: 8px 12px;
+    }
+}
+
+/* Dark Mode Toggle */
+.dark-mode-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+}
+
+/* Data Visualization Enhancements */
+.chart-container {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 15px 0;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+/* Status Indicators */
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-online { background: #2ecc40; }
+.status-warning { background: #f39c12; }
+.status-error { background: #e74c3c; }
+
+/* Enhanced Buttons */
+.btn-primary {
+    background: linear-gradient(135deg, #ff8800, #ffb366);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(255, 136, 0, 0.4);
+}
+
+.btn-secondary {
+    background: linear-gradient(135deg, #6c757d, #495057);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.btn-secondary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(108, 117, 125, 0.4);
+}
 </style>
 """, unsafe_allow_html=True)
 
 # Add tabs for different views
-tab1, tab2, tab3 = st.tabs(["Main Interface", "Detailed Scoring Guide", "Model Training Timeline and Methodological Summary"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "Main Interface",
+    "Detailed Scoring Guide",
+    "Model Training Timeline and Methodological Summary",
+    "References",
+    "Global Feature Importance"
+])
 
 with tab1:
-    st.title("PONV RISK PRO")
+    st.markdown("""
+    <div style='font-size:3em; font-weight:800; color:#fff; text-align:center; margin-bottom:0.2em; margin-top:0.2em;'>PONV RISK PRO</div>
+    """, unsafe_allow_html=True)
 
     # Centered text
     st.markdown("<div style='text-align: center;'>An initiative of MKCG Medical College & Hospital - MKCG MedAI Labs</div>", unsafe_allow_html=True)
@@ -373,29 +1162,49 @@ with tab1:
         unsafe_allow_html=True,
     )
 
-    st.sidebar.header("PONV Risk Assessment Parameters")
+    # Enhanced Sidebar with Section Headers
+    st.sidebar.markdown("""
+    <div class='sidebar-section'>
+        <i class='fas fa-user-md'></i> PONV Risk Assessment Parameters
+    </div>
+    """, unsafe_allow_html=True)
 
     # ------------------------- PATIENT FACTORS -------------------------
-    gender = st.sidebar.selectbox("Female Gender", ["No", "Yes"])
-    smoker = st.sidebar.selectbox("Non-Smoker", ["No", "Yes"])
-    history_ponv = st.sidebar.selectbox("History of PONV or Motion Sickness", ["No", "Yes"])
-    age = st.sidebar.slider("Age", 18, 80, 35)
-    preop_anxiety = st.sidebar.selectbox("Preoperative Anxiety", ["No", "Yes"])
-    history_migraine = st.sidebar.selectbox("History of Migraine", ["No", "Yes"])
-    obesity = st.sidebar.selectbox("BMI > 30", ["No", "Yes"])
+    st.sidebar.markdown("""
+    <div style='font-weight: 600; color: #ff8800; margin: 15px 0 10px 0; border-bottom: 2px solid #ff8800; padding-bottom: 5px;'>
+        👤 Patient Factors
+    </div>
+    """, unsafe_allow_html=True)
+    
+    gender = st.sidebar.selectbox("Female Gender", ["No", "Yes"], help="Female patients have higher PONV risk")
+    smoker = st.sidebar.selectbox("Non-Smoker", ["No", "Yes"], help="Non-smokers have higher PONV risk")
+    history_ponv = st.sidebar.selectbox("History of PONV or Motion Sickness", ["No", "Yes"], help="Previous PONV episodes increase risk")
+    age = st.sidebar.slider("Age", 18, 80, 35, help="Age > 50 years increases PONV risk")
+    preop_anxiety = st.sidebar.selectbox("Preoperative Anxiety", ["No", "Yes"], help="Anxiety can increase PONV risk")
+    history_migraine = st.sidebar.selectbox("History of Migraine", ["No", "Yes"], help="Migraine history correlates with PONV")
+    obesity = st.sidebar.selectbox("BMI > 30", ["No", "Yes"], help="Obesity is a risk factor for PONV")
 
     # ------------------------- SURGICAL FACTORS -------------------------
-    abdominal_surgery = st.sidebar.selectbox("Abdominal or Laparoscopic Surgery", ["No", "Yes"])
-    ent_surgery = st.sidebar.selectbox("ENT/Neurosurgery/Ophthalmic Surgery", ["No", "Yes"])
-    gynae_surgery = st.sidebar.selectbox("Gynecological or Breast Surgery", ["No", "Yes"])
-    surgery_duration = st.sidebar.selectbox("Surgery Duration > 60 min", ["No", "Yes"])
-    major_blood_loss = st.sidebar.selectbox("Major Blood Loss > 500 mL", ["No", "Yes"])
-    volatile_agents = st.sidebar.selectbox("Use of Volatile Agents (Sevo/Iso/Des)", ["No", "Yes"])
-    nitrous_oxide = st.sidebar.selectbox("Use of Nitrous Oxide", ["No", "Yes"])
+    st.sidebar.markdown("""
+    <div style='font-weight: 600; color: #ff8800; margin: 15px 0 10px 0; border-bottom: 2px solid #ff8800; padding-bottom: 5px;'>
+        🏥 Surgical Factors
+    </div>
+    """, unsafe_allow_html=True)
+    
+    abdominal_surgery = st.sidebar.selectbox("Abdominal or Laparoscopic Surgery", ["No", "Yes"], help="Laparoscopic procedures increase PONV risk")
+    ent_surgery = st.sidebar.selectbox("ENT/Neurosurgery/Ophthalmic Surgery", ["No", "Yes"], help="ENT and neurosurgical procedures are high-risk")
+    gynae_surgery = st.sidebar.selectbox("Gynecological or Breast Surgery", ["No", "Yes"], help="Gynecological procedures have higher PONV incidence")
+    surgery_duration = st.sidebar.selectbox("Surgery Duration > 60 min", ["No", "Yes"], help="Longer procedures increase PONV risk")
+    major_blood_loss = st.sidebar.selectbox("Major Blood Loss > 500 mL", ["No", "Yes"], help="Significant blood loss can trigger PONV")
+    volatile_agents = st.sidebar.selectbox("Use of Volatile Agents (Sevo/Iso/Des)", ["No", "Yes"], help="Volatile anesthetics are emetogenic")
+    nitrous_oxide = st.sidebar.selectbox("Use of Nitrous Oxide", ["No", "Yes"], help="N2O increases PONV risk")
 
     # ------------------------- DRUG FACTORS (WITH DOSE) -------------------------
-    # Updated Drug Administration (Specify Dose) Section
-    st.sidebar.markdown("<div class='drug-admin-header'><h2>Drug Administration (Specify Dose)</h2></div>", unsafe_allow_html=True)
+    st.sidebar.markdown("""
+    <div style='font-weight: 600; color: #ff8800; margin: 15px 0 10px 0; border-bottom: 2px solid #ff8800; padding-bottom: 5px;'>
+        💊 Drug Administration (Specify Dose)
+    </div>
+    """, unsafe_allow_html=True)
 
     # Drug: Ondansetron
     st.sidebar.markdown("""
@@ -719,97 +1528,176 @@ with tab1:
     hybrid_score = calculate_hybrid_score()
     category, css_class = risk_category(hybrid_score) # Use CSS class instead of color
 
-    st.subheader("Hybrid PONV Score Summary")
+    # Calculate position for risk meter (0-100%)
+    def get_risk_percentage(score):
+        if score <= -5:
+            return 5  # Very Low Risk
+        elif -4 <= score <= 3:
+            return 25  # Low Risk
+        elif 4 <= score <= 9:
+            return 50  # Moderate Risk
+        elif 10 <= score <= 15:
+            return 75  # High Risk
+        else:
+            return 95  # Very High Risk
+
+    risk_percentage = get_risk_percentage(hybrid_score)
+    total_score = hybrid_score
+    risk_category_label = category
+
+    # Display the risk meter
     st.markdown(f"""
-    <div class='hybrid-score-box {css_class}'>
-        <h3 style='margin: 0;'>Total Hybrid Score: {hybrid_score}</h3>
-        <h4 style='margin: 0;'>Risk Category: <span style='font-weight: bold;'>{category}</span></h4>
+<div class='risk-meter-container'>
+    <h2 class='total-score'>Total Hybrid Score: {total_score}</h2>
+    <h3 class='risk-category'>Risk Category: {risk_category_label}</h3>
+    <div class='risk-meter'>
+        <div class='risk-indicator' style='left: {risk_percentage}%;'></div>
     </div>
-    """, unsafe_allow_html=True)
+    <div class='risk-labels'>
+        <span>Very Low</span>
+        <span>Low</span>
+        <span>Moderate</span>
+        <span>High</span>
+        <span>Very High</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+    # Add CSS for the risk meter with black background and visible text
+    st.markdown("""
+<style>
+.risk-meter-container {
+    background: #18191a;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+}
+.total-score {
+    color: #ffb366;
+    font-size: 24px;
+    margin-bottom: 10px;
+}
+.risk-category {
+    color: #fff;
+    font-size: 20px;
+    margin-bottom: 20px;
+}
+.risk-meter {
+    height: 20px;
+    background: linear-gradient(to right, #4daf4a, #ffed4a, #ff4444);
+    border-radius: 10px;
+    position: relative;
+    margin-bottom: 10px;
+}
+.risk-indicator {
+    width: 12px;
+    height: 30px;
+    background: #fff;
+    position: absolute;
+    top: -5px;
+    transform: translateX(-50%);
+    border-radius: 3px;
+}
+.risk-labels {
+    display: flex;
+    justify-content: space-between;
+    color: #fff;
+    font-size: 14px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 
     # ------------------------- RECOMMENDATIONS FOR CLINICIANS (Expandable) -------------------------
 
     st.subheader("Recommendations for Clinicians")
     with st.expander("View Recommendations"):
-        st.markdown("""
-        <div style='font-size: 0.95em; color: #495057; margin-bottom: 1.5rem;'>
-        Evidence-based recommendations tailored for PONV risk levels, aligned with international guidelines (Apfel, ASA, ESA):
-        </div>
-        """, unsafe_allow_html=True)
-
         if category == "Moderate Risk":
             st.markdown("""
-            <div class='recommendation-header recommendation-moderate'>
-                <div style='font-size: 1.1em; font-weight: 700;'>Moderate Risk (Score: 4-9)</div>
-                <div style='font-size: 0.95em;'>Dual prophylaxis recommended</div>
-            </div>
-            <div style='margin-bottom: 1.2em;'>
-                <b>Pharmacological Interventions</b>
-                <ul>
-                    <li>Ondansetron 4-8 mg IV - 5-HT3 antagonist at surgery end</li>
-                    <li>Dexamethasone 4 mg or higher IV - At induction (delayed effect)</li>
-                    <li>Midazolam 1-2 mg IV - If anxiety present</li>
-                </ul>
-            </div>
-            <div style='margin-bottom: 1.2em;'>
-                <b>Anesthetic Technique</b>
-                <ul>
-                    <li>TIVA with Propofol - Preferred when feasible</li>
-                    <li>Minimize opioids - Use non-opioid alternatives</li>
-                    <li>Avoid N2O - When possible</li>
-                </ul>
-            </div>
-            <div>
-                <b>Supportive Measures</b>
-                <ul>
-                    <li>Hydration - Ensure adequate perioperative fluids</li>
-                    <li>Gastric management - Avoid distension</li>
-                    <li>Monitoring - >30 minutes post-op</li>
-                </ul>
-            </div>
+            <h4>🔹 1. Moderate Risk (Score: 4–9)</h4>
+            <b>Moderate Risk (Score: 4–9)</b><br>
+            <span style='color:#007bff;'>&#x27A1; Dual prophylaxis is recommended</span><br>
+            <span style='font-size:0.95em;'>📘 Source: <a href="https://pubmed.ncbi.nlm.nih.gov/32049718/" target="_blank">Fourth Consensus Guidelines, 2020 (ASHP)</a></span>
+            <ul>
+                <li><b>Ondansetron 4–8 mg IV</b> (5-HT<sub>3</sub> antagonist) – Administer at end of surgery</li>
+                <li><b>Dexamethasone 4 mg IV</b> – At induction (slow onset)</li>
+                <li><b>Midazolam 1–2 mg IV</b> – Consider if preoperative anxiety present</li>
+            </ul>
+            <b>Anesthetic Techniques:</b>
+            <ul>
+                <li><b>TIVA (Total IV Anesthesia) with Propofol</b> – Preferred over volatile agents</li>
+                <li><b>Minimize opioid use</b> – Use multimodal analgesia (e.g., NSAIDs, acetaminophen)</li>
+                <li><b>Avoid Nitrous Oxide (N<sub>2</sub>O)</b> – Linked to increased PONV</li>
+            </ul>
+            <b>Supportive Measures:</b>
+            <ul>
+                <li><b>Adequate hydration</b> – To reduce nausea from hypovolemia</li>
+                <li><b>Gastric decompression</b> – Avoid distension</li>
+                <li><b>Observation &gt;30 min</b> – Monitor in PACU</li>
+            </ul>
             """, unsafe_allow_html=True)
-        elif category == "High Risk" or category == "Very High Risk":
+        elif category in ["High Risk", "Very High Risk"]:
             st.markdown("""
-            <div class='recommendation-header recommendation-high'>
-                <div style='font-size: 1.1em; font-weight: 700;'>High Risk (Score: 10-15) or Very High Risk</div>
-                <div style='font-size: 0.95em;'>Multimodal prevention required</div>
-            </div>
-            <div style='margin-bottom: 1.2em;'>
-                <b>Pharmacological Interventions</b>
-                <ul>
-                    <li>Triple therapy: Ondansetron + Dexamethasone + NK1 antagonist (if available)</li>
-                    <li>Scopolamine patch - For prolonged effect</li>
-                    <li>Droperidol 0.625-1.25 mg IV - If not contraindicated</li>
-                </ul>
-            </div>
-            <div style='margin-bottom: 1.2em;'>
-                <b>Anesthetic Technique</b>
-                <ul>
-                    <li>Mandatory TIVA - Propofol-based</li>
-                    <li>Opioid-sparing - Regional techniques preferred</li>
-                </ul>
-            </div>
-            <div>
-                <b>Postoperative Care</b>
-                <ul>
-                    <li>Extended PACU - >2 hours monitoring</li>
-                    <li>Rescue medications - Immediately available</li>
-                    <li>Discharge Rx - Consider antiemetics</li>
-                </ul>
-            </div>
+            <h4>🔴 2. High Risk (Score: 10–15) or Very High Risk</h4>
+            <b>High Risk (Score: 10–15) or Very High Risk</b><br>
+            <span style='color:#dc3545;'>&#x27A1; Multimodal prevention is mandatory</span><br>
+            <span style='font-size:0.95em;'>📘 Source: <a href="https://pubmed.ncbi.nlm.nih.gov/32049718/" target="_blank">2020 PONV Guidelines (SAMBA & ASHP)</a></span><br>
+            <span style='font-size:0.95em;'>📘 Also see: <a href="https://www.fda.gov/regulatory-information/search-fda-guidance-documents/postoperative-nausea-and-vomiting-patients-undergoing-surgery-guidance-industry" target="_blank">FDA Draft Guidance on PONV, 2024</a></span>
+            <ul>
+                <li><b>Triple Therapy:</b>
+                    <ul>
+                        <li>Ondansetron 4–8 mg IV</li>
+                        <li>Dexamethasone 4–8 mg IV</li>
+                        <li>NK1 receptor antagonist (e.g., Aprepitant 40 mg PO or Fosaprepitant 150 mg IV)</li>
+                    </ul>
+                </li>
+                <li>Scopolamine patch – 1.5 mg transdermally (apply night before or 2 hrs pre-op)</li>
+                <li>Droperidol 0.625–1.25 mg IV – If QT prolongation is not present</li>
+            </ul>
+            <b>Anesthetic Techniques:</b>
+            <ul>
+                <li><b>Mandatory Propofol-based TIVA</b> – Eliminates volatile anesthetics</li>
+                <li><b>Opioid-sparing strategies</b> – Use nerve blocks or adjuncts like ketamine/dexmedetomidine</li>
+                <li><b>Avoid volatile agents &amp; N<sub>2</sub>O</b> – Unless absolutely necessary</li>
+            </ul>
+            <b>Postoperative Care:</b>
+            <ul>
+                <li><b>Extended PACU observation</b> – At least 2 hours</li>
+                <li><b>Immediate rescue meds available</b></li>
+                <li><b>Discharge prescription</b> – Anti-emetics like ondansetron or promethazine</li>
+            </ul>
             """, unsafe_allow_html=True)
         elif category in ["Very Low Risk", "Low Risk"]:
-             st.info("Recommendations for Very Low and Low Risk categories are generally focused on minimizing risk factors and may not require routine pharmacological prophylaxis. Consult relevant guidelines for specific approaches.")
-
+            st.markdown("""
+            <h4>🟢 3. Very Low and Low Risk (Score: 0–3)</h4>
+            <span style='font-size:0.95em;'>📘 Source: <a href="https://www.ashp.org/-/media/assets/policy-guidelines/docs/guidelines/postoperative-nausea-vomiting.ashx" target="_blank">ASHP Guidelines</a></span>
+            <ul>
+                <li>Routine pharmacological prophylaxis may not be required.</li>
+                <li>Focus on minimizing emetogenic stimuli:</li>
+                <ul>
+                    <li>Avoid volatile agents/N<sub>2</sub>O when possible</li>
+                    <li>Consider regional techniques</li>
+                    <li>Optimize hydration and reduce opioid use</li>
+                </ul>
+            </ul>
+            """, unsafe_allow_html=True)
+        # Rescue Therapy section (always shown)
         st.markdown("""
-        <div style='font-weight: 600; color: #721c24; margin: 15px 0 10px 0;'>Rescue Therapy</div>
-        <div style='font-size: 0.95em; color: #495057;'>For all moderate/severe risk patients who develop PONV despite prophylaxis:</div>
-        <ul style='margin-top: 0; padding-left: 25px;'>
-            <li>First-line: Metoclopramide 10 mg IV or Promethazine 12.5-25 mg IV</li>
-            <li>Second-line: Scopolamine patch (if available) or haloperidol 0.5-1 mg IV</li>
-            <li>Do not repeat the same class of antiemetic used in prophylaxis</li>
+        <hr>
+        <h4>🩺 4. Rescue Therapy (for breakthrough PONV despite prophylaxis)</h4>
+        <b>First-line Rescue:</b>
+        <ul>
+            <li>Metoclopramide 10 mg IV</li>
+            <li>Promethazine 12.5–25 mg IV</li>
         </ul>
+        <b>Second-line Rescue:</b>
+        <ul>
+            <li>Scopolamine patch – If not previously used</li>
+            <li>Haloperidol 0.5–1 mg IV – Use if QTc is normal</li>
+        </ul>
+        <b style='color:#dc3545;'>❗ Do not repeat the same class used for prophylaxis (e.g., avoid repeat 5-HT<sub>3</sub> if used already)</b>
+        <br>
+        <span style='font-size:0.95em;'>📘 Reference: <a href="https://www.openanesthesia.org/po_nausea_vomiting/" target="_blank">OpenAnesthesia: PONV Management</a></span>
         """, unsafe_allow_html=True)
 
 
@@ -930,6 +1818,12 @@ with tab1:
         auc_xgb_train = auc(fpr_xgb_train, tpr_xgb_train)
         auc_lgb_train = auc(fpr_lgb_train, tpr_lgb_train)
         fig_train_all, ax_train_all = plt.subplots(figsize=(5, 3))
+        fig_train_all.patch.set_facecolor('#ffffff')
+        ax_train_all.set_facecolor('#ffffff')
+        ax_train_all.tick_params(colors='#000000')
+        ax_train_all.xaxis.label.set_color('#000000')
+        ax_train_all.yaxis.label.set_color('#000000')
+        ax_train_all.title.set_color('#000000')
         ax_train_all.plot(fpr_lgb_train, tpr_lgb_train, label=f"LightGBM (AUC = {auc_lgb_train:.3f})")
         ax_train_all.plot(fpr_xgb_train, tpr_xgb_train, label=f"XGBoost (AUC = {auc_xgb_train:.3f})")
         ax_train_all.plot([0, 1], [0, 1], 'k--')
@@ -947,6 +1841,12 @@ with tab1:
         auc_xgb_val = auc(fpr_xgb_val, tpr_xgb_val)
         auc_lgb_val = auc(fpr_lgb_val, tpr_lgb_val)
         fig_val_all, ax_val_all = plt.subplots(figsize=(5, 3))
+        fig_val_all.patch.set_facecolor('#ffffff')
+        ax_val_all.set_facecolor('#ffffff')
+        ax_val_all.tick_params(colors='#000000')
+        ax_val_all.xaxis.label.set_color('#000000')
+        ax_val_all.yaxis.label.set_color('#000000')
+        ax_val_all.title.set_color('#000000')
         ax_val_all.plot(fpr_lgb_val, tpr_lgb_val, label=f"LightGBM (AUC = {auc_lgb_val:.3f})")
         ax_val_all.plot(fpr_xgb_val, tpr_xgb_val, label=f"XGBoost (AUC = {auc_xgb_val:.3f})")
         ax_val_all.plot([0, 1], [0, 1], 'k--')
@@ -964,7 +1864,41 @@ with tab1:
     })
     for col in ['Training AUC', 'Validation AUC']:
         df_auc[col] = df_auc[col].apply(lambda x: '{:.3f}'.format(x) if x is not None else 'N/A')
-    st.table(df_auc)
+    
+    # Enhanced table display with status indicators
+    st.markdown("""
+    <div class='chart-container'>
+        <h4 style='margin-bottom: 15px; color: #ff8800;'>📊 Model Performance Metrics</h4>
+    """, unsafe_allow_html=True)
+    
+    # Create styled table with status indicators
+    for idx, row in df_auc.iterrows():
+        train_auc = float(row['Training AUC']) if row['Training AUC'] != 'N/A' else 0
+        val_auc = float(row['Validation AUC']) if row['Validation AUC'] != 'N/A' else 0
+        
+        # Determine status based on AUC values
+        if val_auc >= 0.8:
+            status_class = "status-online"
+            status_text = "Excellent"
+        elif val_auc >= 0.7:
+            status_class = "status-warning"
+            status_text = "Good"
+        else:
+            status_class = "status-error"
+            status_text = "Needs Improvement"
+        
+        st.markdown(f"""
+        <div style='display: flex; align-items: center; padding: 10px; margin: 5px 0; background: rgba(255,255,255,0.05); border-radius: 8px;'>
+            <div class='status-indicator {status_class}'></div>
+            <div style='flex: 1;'>
+                <strong>{row['Model']}</strong><br>
+                <small>Training AUC: {row['Training AUC']} | Validation AUC: {row['Validation AUC']}</small>
+            </div>
+            <div style='color: #ff8800; font-weight: 600;'>{status_text}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("</div>", unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -1175,73 +2109,116 @@ with tab1:
     add_column_if_not_exists(cursor, 'logs', 'predicted_risk_lgb', 'REAL')
 
 
-    # Add opioid calculation before database logging
+        # Add opioid calculation before database logging
     opioid = "Yes" if (nalbuphine_dose > 0 or fentanyl_dose > 0 or
                          butorphanol_dose > 0 or pentazocine_dose > 0) else "No"
 
-    if st.button("Log This Entry", key='log_entry_button'):
-        try:
-            cursor.execute('''
-                INSERT INTO logs (
-                    gender, smoker, history_ponv, age, anxiety,
-                    abdominal_surgery, volatile, n2o, midazolam,
-                    ondansetron, dexamethasone, glycopyrrolate,
-                    nalbuphine, fentanyl, butorphanol, pentazocine,
-                    propofol_mode, muscle_relaxant, hybrid_score,
-                    predicted_risk_xgb, predicted_risk_lgb
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                "Female" if gender == "Yes" else "Male",
-                "No" if smoker == "Yes" else "Yes",
-                "Yes" if history_ponv == "Yes" else "No",
-                age,
-                "Yes" if preop_anxiety == "Yes" else "No",
-                "Yes" if (abdominal_surgery == "Yes" or ent_surgery == "Yes" or gynae_surgery == "Yes") else "No",
-                "Yes" if volatile_agents == "Yes" else "No",
-                "Yes" if nitrous_oxide == "Yes" else "No",
-                midazolam_dose,
-                ondansetron_dose,
-                dexamethasone_dose,
-                glycopyrrolate_dose,
-                nalbuphine_dose,
-                fentanyl_dose,
-                butorphanol_dose,
-                pentazocine_dose,
-                propofol_mode,
-                muscle_relaxant,
-                hybrid_score,
-                prob_xgb,
-                prob_lgb
-            ))
-            conn.commit()
-            st.success("Entry logged successfully!")
-        except sqlite3.Error as e:
-            st.error(f"Database error: {str(e)}")
-        except NameError as e:
-            st.error(f"Logging error: {str(e)}. Please ensure all input fields are selected/filled.")
+    # Enhanced logging section with better UI
+    st.markdown("""
+    <div style='margin: 20px 0; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 10px; border-left: 4px solid #ff8800;'>
+        <h4 style='margin: 0 0 10px 0; color: #ff8800;'>📝 Data Logging</h4>
+        <p style='margin: 0; font-size: 0.9em; color: #ccc;'>Log this assessment for future reference and analysis.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 Log This Entry", key='log_entry_button', use_container_width=True):
+            with st.spinner("Saving to database..."):
+                try:
+                    cursor.execute('''
+                        INSERT INTO logs (
+                            gender, smoker, history_ponv, age, anxiety,
+                            abdominal_surgery, volatile, n2o, midazolam,
+                            ondansetron, dexamethasone, glycopyrrolate,
+                            nalbuphine, fentanyl, butorphanol, pentazocine,
+                            propofol_mode, muscle_relaxant, hybrid_score,
+                            predicted_risk_xgb, predicted_risk_lgb
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        "Female" if gender == "Yes" else "Male",
+                        "No" if smoker == "Yes" else "Yes",
+                        "Yes" if history_ponv == "Yes" else "No",
+                        age,
+                        "Yes" if preop_anxiety == "Yes" else "No",
+                        "Yes" if (abdominal_surgery == "Yes" or ent_surgery == "Yes" or gynae_surgery == "Yes") else "No",
+                        "Yes" if volatile_agents == "Yes" else "No",
+                        "Yes" if nitrous_oxide == "Yes" else "No",
+                        midazolam_dose,
+                        ondansetron_dose,
+                        dexamethasone_dose,
+                        glycopyrrolate_dose,
+                        nalbuphine_dose,
+                        fentanyl_dose,
+                        butorphanol_dose,
+                        pentazocine_dose,
+                        propofol_mode,
+                        muscle_relaxant,
+                        hybrid_score,
+                        prob_xgb,
+                        prob_lgb
+                    ))
+                    conn.commit()
+                    st.markdown("""
+                    <div class='success-message'>
+                        ✅ <strong>Entry logged successfully!</strong><br>
+                        <small>Data saved to local database for future analysis.</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                except sqlite3.Error as e:
+                    st.markdown(f"""
+                    <div class='error-message'>
+                        ❌ <strong>Database error:</strong> {str(e)}
+                    </div>
+                    """, unsafe_allow_html=True)
+                except NameError as e:
+                    st.markdown(f"""
+                    <div class='error-message'>
+                        ❌ <strong>Logging error:</strong> {str(e)}<br>
+                        <small>Please ensure all input fields are selected/filled.</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+    with col2:
+        if st.button("📊 Show All Entries", key='show_entries_button', use_container_width=True):
+            with st.spinner("Loading database entries..."):
+                cursor.execute('SELECT * FROM logs ORDER BY timestamp DESC')
+                rows = cursor.fetchall()
+                if rows:
+                    columns = [description[0] for description in cursor.description]
+                    df_log = pd.DataFrame(rows, columns=columns)
+                    
+                    st.markdown("""
+                    <div class='success-message'>
+                        📋 <strong>Database Entries Loaded</strong><br>
+                        <small>Found {} entries in the database.</small>
+                    </div>
+                    """.format(len(rows)), unsafe_allow_html=True)
+                    
+                    st.dataframe(df_log, use_container_width=True)
+
+                    if not df_log.empty:
+                        csv = df_log.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="📥 Download All Entries as CSV",
+                            data=csv,
+                            file_name='logged_ponv_entries.csv',
+                            mime='text/csv',
+                            key='download_button',
+                            use_container_width=True
+                        )
+                    else:
+                        st.warning("No data available to download")
+                else:
+                    st.markdown("""
+                    <div class='error-message'>
+                        📭 <strong>No entries found</strong><br>
+                        <small>The database is empty. Log some entries first.</small>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 
-    if st.button("Show All Entries", key='show_entries_button'):
-        cursor.execute('SELECT * FROM logs ORDER BY timestamp DESC')
-        rows = cursor.fetchall()
-        if rows:
-            columns = [description[0] for description in cursor.description]
-            df_log = pd.DataFrame(rows, columns=columns)
-            st.dataframe(df_log)
 
-            if not df_log.empty:
-                csv = df_log.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download All Entries as CSV",
-                    data=csv,
-                    file_name='logged_ponv_entries.csv',
-                    mime='text/csv',
-                    key='download_button'
-                )
-            else:
-                st.warning("No data available to download")
-        else:
-            st.info("No entries found in the database.")
 
     # Close the database connection when the app is done (or session ends)
     # This might not be strictly necessary in all Streamlit deployments,
@@ -1253,17 +2230,301 @@ with tab1:
 
     # Add a note about database persistence
     st.markdown("""
-    <div style='font-size: 0.8em; text-align: center; color: #6c757d;'>
-        Data is logged to a local SQLite file (`ponv_logs.db`). This file will persist as long as the Streamlit application's data directory is maintained.
+    <div style='font-size: 0.8em; text-align: center; color: #6c757d; margin: 20px 0;'>
+        <div class='interactive-card' style='padding: 15px; background: rgba(255,255,255,0.05); border-radius: 10px;'>
+            <h5 style='margin: 0 0 10px 0; color: #ff8800;'>💾 Data Persistence</h5>
+            <p style='margin: 0; font-size: 0.9em;'>Data is logged to a local SQLite file (`ponv_logs.db`). This file will persist as long as the Streamlit application's data directory is maintained.</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ------------------------- PDF REPORT GENERATION -------------------------
+    st.markdown("""
+    <div style='margin: 30px 0; padding: 20px; background: linear-gradient(135deg, #2b5876, #4e4376); border-radius: 15px; border-left: 5px solid #ff8800;'>
+        <h3 style='margin: 0 0 15px 0; color: #fff; text-align: center;'>📄 Generate Comprehensive PDF Report</h3>
+        <p style='margin: 0; font-size: 1em; line-height: 1.6; color: #fff; text-align: center;'>
+            Download a detailed report containing all patient data, risk assessments, model predictions, graphs, and clinical recommendations.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📄 Generate PDF Report", key='generate_pdf_button', use_container_width=True):
+            with st.spinner("Generating comprehensive PDF report..."):
+                try:
+                    # Prepare patient data dictionary
+                    patient_data = {
+                        'gender': gender,
+                        'age': age,
+                        'smoker': smoker,
+                        'history_ponv': history_ponv,
+                        'preop_anxiety': preop_anxiety,
+                        'history_migraine': history_migraine,
+                        'obesity': obesity,
+                        'abdominal_surgery': abdominal_surgery,
+                        'ent_surgery': ent_surgery,
+                        'gynae_surgery': gynae_surgery,
+                        'surgery_duration': surgery_duration,
+                        'major_blood_loss': major_blood_loss,
+                        'volatile_agents': volatile_agents,
+                        'nitrous_oxide': nitrous_oxide,
+                        'ondansetron_dose': ondansetron_dose,
+                        'midazolam_dose': midazolam_dose,
+                        'dexamethasone_dose': dexamethasone_dose,
+                        'glycopyrrolate_dose': glycopyrrolate_dose,
+                        'nalbuphine_dose': nalbuphine_dose,
+                        'fentanyl_dose': fentanyl_dose,
+                        'butorphanol_dose': butorphanol_dose,
+                        'pentazocine_dose': pentazocine_dose,
+                        'propofol_mode': propofol_mode,
+                        'muscle_relaxant': muscle_relaxant,
+                        'muscle_relaxant_dose': muscle_relaxant_dose
+                    }
+                    
+                    # Prepare model predictions
+                    model_predictions = {
+                        'lightgbm': prob_lgb,
+                        'xgboost': prob_xgb
+                    }
+                    
+                    # Prepare performance metrics
+                    performance_metrics = None
+                    if len(np.unique(y_val)) >= 2:
+                        def calculate_metrics_for_pdf(model, X_val_scaled, y_val):
+                            preds_proba = model.predict_proba(X_val_scaled)[:, 1]
+                            preds = (preds_proba > 0.5).astype(int)
+                            try:
+                                prec = precision_score(y_val, preds)
+                            except:
+                                prec = np.nan
+                            try:
+                                rec = recall_score(y_val, preds)
+                            except:
+                                rec = np.nan
+                            try:
+                                f1 = f1_score(y_val, preds)
+                            except:
+                                f1 = np.nan
+                            acc = accuracy_score(y_val, preds)
+                            return {'accuracy': acc, 'precision': prec, 'recall': rec, 'f1': f1}
+                        
+                        performance_metrics = {
+                            'LightGBM': calculate_metrics_for_pdf(lgb_model, X_val_scaled, y_val),
+                            'XGBoost': calculate_metrics_for_pdf(xgb_model, X_val_scaled, y_val)
+                        }
+                    
+                    # Prepare feature breakdown
+                    feature_breakdown = {
+                        "Female Gender": binary(gender),
+                        "Non-Smoker": binary(smoker),
+                        "History of PONV or Motion Sickness": binary(history_ponv),
+                        "Age > 50": 1 if age > 50 else 0,
+                        "Preoperative Anxiety": binary(preop_anxiety),
+                        "History of Migraine": binary(history_migraine),
+                        "BMI > 30": binary(obesity),
+                        "Abdominal or Laparoscopic Surgery": binary(abdominal_surgery),
+                        "ENT/Neurosurgery/Ophthalmic Surgery": binary(ent_surgery),
+                        "Gynecological or Breast Surgery": binary(gynae_surgery),
+                        "Surgery Duration > 60 min": binary(surgery_duration),
+                        "Major Blood Loss > 500 mL": binary(major_blood_loss),
+                        "Use of Volatile Agents": binary(volatile_agents),
+                        "Use of Nitrous Oxide": binary(nitrous_oxide),
+                        "Midazolam Dose": midazolam_score(midazolam_dose),
+                        "Ondansetron Dose": ondansetron_score(ondansetron_dose),
+                        "Dexamethasone Dose": dexamethasone_score(dexamethasone_dose),
+                        "Glycopyrrolate Dose": glycopyrrolate_score(glycopyrrolate_dose),
+                        "Nalbuphine Dose": nalbuphine_score(nalbuphine_dose),
+                        "Fentanyl Dose": fentanyl_score(fentanyl_dose),
+                        "Butorphanol Dose": butorphanol_score(butorphanol_dose),
+                        "Pentazocine Dose": pentazocine_score(pentazocine_dose),
+                        "Propofol Use": propofol_score(propofol_mode),
+                        "Muscle Relaxant": muscle_relaxant_score(muscle_relaxant, muscle_relaxant_dose),
+                    }
+                    
+                    # Generate feature importance figure for PDF
+                    feature_importance_fig = None
+                    try:
+                        importances = lgb_model.feature_importances_
+                        indices = np.argsort(importances)[::-1]
+                        top_n = 10
+                        top_features = np.array(feature_names)[indices][:top_n][::-1]
+                        top_importances = importances[indices][:top_n][::-1]
+                        
+                        cmap = cm.get_cmap('plasma', top_n)
+                        colors_pdf = [cmap(i) for i in range(top_n)]
+                        
+                        feature_importance_fig, ax = plt.subplots(figsize=(10, 6))
+                        feature_importance_fig.patch.set_facecolor('white')
+                        ax.set_facecolor('white')
+                        bars = ax.barh(top_features, top_importances, color=colors_pdf, edgecolor='black')
+                        
+                        for bar in bars:
+                            ax.text(bar.get_width() + 0.5, bar.get_y() + bar.get_height()/2,
+                                    f'{bar.get_width():.0f}', va='center', ha='left', 
+                                    color='black', fontsize=10, fontweight='bold')
+                        
+                        ax.set_yticklabels(top_features, color='black', fontweight='bold', fontname='Arial')
+                        ax.set_xlabel('Importance', color='black')
+                        ax.set_title('Top 10 Features (LightGBM)', color='black', fontsize=14, fontweight='bold')
+                        ax.tick_params(axis='x', colors='black')
+                        ax.tick_params(axis='y', colors='black')
+                        ax.xaxis.label.set_color('black')
+                        ax.yaxis.label.set_color('black')
+                        ax.title.set_color('black')
+                        ax.spines['bottom'].set_color('black')
+                        ax.spines['top'].set_color('black')
+                        ax.spines['left'].set_color('black')
+                        ax.spines['right'].set_color('black')
+                        plt.tight_layout()
+                    except Exception as e:
+                        st.warning(f"Could not generate feature importance plot for PDF: {e}")
+                    
+                    # Generate ROC figures for PDF
+                    roc_fig_train = None
+                    roc_fig_val = None
+                    
+                    try:
+                        if len(np.unique(y_train_balanced)) >= 2:
+                            fpr_xgb_train, tpr_xgb_train, _ = roc_curve(y_train_balanced, xgb_model.predict_proba(X_train_balanced)[:, 1])
+                            fpr_lgb_train, tpr_lgb_train, _ = roc_curve(y_train_balanced, lgb_model.predict_proba(X_train_balanced)[:, 1])
+                            auc_xgb_train = auc(fpr_xgb_train, tpr_xgb_train)
+                            auc_lgb_train = auc(fpr_lgb_train, tpr_lgb_train)
+                            
+                            roc_fig_train, ax_train = plt.subplots(figsize=(8, 6))
+                            roc_fig_train.patch.set_facecolor('white')
+                            ax_train.set_facecolor('white')
+                            ax_train.tick_params(colors='black')
+                            ax_train.xaxis.label.set_color('black')
+                            ax_train.yaxis.label.set_color('black')
+                            ax_train.title.set_color('black')
+                            ax_train.plot(fpr_lgb_train, tpr_lgb_train, label=f"LightGBM (AUC = {auc_lgb_train:.3f})")
+                            ax_train.plot(fpr_xgb_train, tpr_xgb_train, label=f"XGBoost (AUC = {auc_xgb_train:.3f})")
+                            ax_train.plot([0, 1], [0, 1], 'k--')
+                            ax_train.set_xlabel("False Positive Rate")
+                            ax_train.set_ylabel("True Positive Rate")
+                            ax_train.set_title("Training ROC Curve")
+                            ax_train.legend(loc="lower right")
+                            ax_train.grid(True, alpha=0.3)
+                            plt.tight_layout()
+                    except Exception as e:
+                        st.warning(f"Could not generate training ROC plot for PDF: {e}")
+                    
+                    try:
+                        if len(np.unique(y_val)) >= 2:
+                            fpr_xgb_val, tpr_xgb_val, _ = roc_curve(y_val, xgb_model.predict_proba(X_val_scaled)[:, 1])
+                            fpr_lgb_val, tpr_lgb_val, _ = roc_curve(y_val, lgb_model.predict_proba(X_val_scaled)[:, 1])
+                            auc_xgb_val = auc(fpr_xgb_val, tpr_xgb_val)
+                            auc_lgb_val = auc(fpr_lgb_val, tpr_lgb_val)
+                            
+                            roc_fig_val, ax_val = plt.subplots(figsize=(8, 6))
+                            roc_fig_val.patch.set_facecolor('white')
+                            ax_val.set_facecolor('white')
+                            ax_val.tick_params(colors='black')
+                            ax_val.xaxis.label.set_color('black')
+                            ax_val.yaxis.label.set_color('black')
+                            ax_val.title.set_color('black')
+                            ax_val.plot(fpr_lgb_val, tpr_lgb_val, label=f"LightGBM (AUC = {auc_lgb_val:.3f})")
+                            ax_val.plot(fpr_xgb_val, tpr_xgb_val, label=f"XGBoost (AUC = {auc_xgb_val:.3f})")
+                            ax_val.plot([0, 1], [0, 1], 'k--')
+                            ax_val.set_xlabel("False Positive Rate")
+                            ax_val.set_ylabel("True Positive Rate")
+                            ax_val.set_title("Validation ROC Curve")
+                            ax_val.legend(loc="lower right")
+                            ax_val.grid(True, alpha=0.3)
+                            plt.tight_layout()
+                    except Exception as e:
+                        st.warning(f"Could not generate validation ROC plot for PDF: {e}")
+                    
+                    # Generate the PDF
+                    pdf_path = generate_pdf_report(
+                        patient_data=patient_data,
+                        hybrid_score=hybrid_score,
+                        risk_category=category,
+                        model_predictions=model_predictions,
+                        feature_importance_fig=feature_importance_fig,
+                        roc_fig_train=roc_fig_train,
+                        roc_fig_val=roc_fig_val,
+                        performance_metrics=performance_metrics,
+                        feature_breakdown=feature_breakdown
+                    )
+                    
+                    # Read the PDF file and create download button
+                    with open(pdf_path, "rb") as pdf_file:
+                        pdf_bytes = pdf_file.read()
+                    
+                    # Create download button
+                    st.download_button(
+                        label="📥 Download PDF Report",
+                        data=pdf_bytes,
+                        file_name=f"PONV_Risk_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf",
+                        key='download_pdf_button',
+                        use_container_width=True
+                    )
+                    
+                    st.markdown("""
+                    <div class='success-message'>
+                        ✅ <strong>PDF Report Generated Successfully!</strong><br>
+                        <small>The comprehensive report includes all patient data, risk assessments, model predictions, graphs, and clinical recommendations.</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Clean up temporary PDF file
+                    try:
+                        os.unlink(pdf_path)
+                    except:
+                        pass
+                        
+                except Exception as e:
+                    st.markdown(f"""
+                    <div class='error-message'>
+                        ❌ <strong>PDF Generation Error:</strong> {str(e)}<br>
+                        <small>Please ensure all required data is available and try again.</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div style='padding: 20px; background: rgba(255,255,255,0.05); border-radius: 10px; border-left: 4px solid #ff8800;'>
+            <h4 style='margin: 0 0 10px 0; color: #ff8800;'>📋 Report Contents</h4>
+            <ul style='margin: 0; padding-left: 20px; color: #fff;'>
+                <li>Executive Summary</li>
+                <li>Patient Information</li>
+                <li>Surgical Information</li>
+                <li>Drug Administration Details</li>
+                <li>Risk Assessment Results</li>
+                <li>Feature Importance Analysis</li>
+                <li>Model Performance Graphs</li>
+                <li>Clinical Recommendations</li>
+                <li>Rescue Therapy Guidelines</li>
+                <li>Medical Disclaimer & References</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Add floating action button for quick actions
+    st.markdown("""
+    <div class='fab' onclick='window.scrollTo({top: 0, behavior: "smooth"})' title='Scroll to Top'>
+        ↑
     </div>
     """, unsafe_allow_html=True)
 
 
     # ------------------------- DISCLAIMER -------------------------
     st.markdown("""
-    <br>
-    <div style='font-size: 0.8em; text-align: center; color: #6c757d;'>
-        <b>Disclaimer:</b> This application is for informational and educational purposes only and should not be considered a substitute for professional medical advice. Always consult with a qualified healthcare provider for diagnosis and treatment.
+    <div style='margin: 30px 0; padding: 20px; background: #18191a; border-radius: 15px; border-left: 5px solid #fff;'>
+        <div style='display: flex; align-items: center; margin-bottom: 10px;'>
+            <div style='font-size: 1.5em; margin-right: 10px; color: #fff;'>⚠️</div>
+            <h4 style='margin: 0; color: #ff3333; font-family: Arial, Helvetica, sans-serif; font-weight: 700;'>Medical Disclaimer</h4>
+        </div>
+        <p style='margin: 0; font-size: 1em; line-height: 1.6; color: #fff; font-family: Arial, Helvetica, sans-serif;'>
+            <strong>Important:</strong> This application is for informational and educational purposes only and should not be considered a substitute for professional medical advice. The predictions and recommendations provided are based on statistical models and should be used as decision support tools only. Always consult with a qualified healthcare provider for diagnosis and treatment decisions.
+        </p>
+        <div style='margin-top: 10px; font-size: 0.95em; color: #fff; font-family: Arial, Helvetica, sans-serif;'>
+            <strong>Developed by:</strong> MKCG Medical College & Hospital - MKCG MedAI Labs<br>
+            <strong>Last Updated:</strong> December 2024
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1318,8 +2579,9 @@ with tab2:
         st.table(styled_df)
 
 with tab3:
-    st.title("Model Training Timeline and Methodological Summary")
-    st.subheader("Model Training Timeline and Methodological Summary")
+    st.markdown("""
+    <div style='font-size:2.2em; font-weight:800; color:#fff; text-align:center; margin-bottom:0.5em;'>Model Training Timeline and Methodological Summary</div>
+    """, unsafe_allow_html=True)
     with st.expander("View Model Training Timeline", expanded=False):
         st.markdown("""
         <style>
@@ -1435,6 +2697,23 @@ with tab3:
                         • External validation set: compute AUC, calibration plots, decision curve analysis
                     </td>
                 </tr>
+            </tbody>
+        </table>
+        """, unsafe_allow_html=True)
+        st.markdown("""
+        <div style='font-size:1.3em; font-weight:700; color:#fff; margin-top:2em; margin-bottom:0.5em;'>Upcoming Project Phases</div>
+        """, unsafe_allow_html=True)
+        st.markdown("""
+        <table class="timeline-table">
+            <thead>
+                <tr>
+                    <th>Phase</th>
+                    <th>n</th>
+                    <th>Key Activities</th>
+                    <th>Biostatistical Notes</th>
+                </tr>
+            </thead>
+            <tbody>
                 <tr>
                     <td class="phase-cell">4. Alpha Build Prospective</td>
                     <td class="n-cell">500</td>
@@ -1466,3 +2745,118 @@ with tab3:
             </tbody>
         </table>
         """, unsafe_allow_html=True)
+
+with tab4:
+    st.markdown("""
+    <div style='font-size:2.2em; font-weight:800; color:#fff; text-align:center; margin-bottom:0.5em;'>References</div>
+    """, unsafe_allow_html=True)
+    st.markdown("""
+    <table style='width:100%; border-collapse: collapse; margin-top: 1.5em; margin-bottom: 1.5em; font-size: 1em; font-family: Arial, Helvetica, sans-serif; box-shadow: 0 0 20px rgba(0,0,0,0.10); border-radius: 10px; overflow: hidden;'>
+        <thead>
+            <tr style='background-color: #2b5876; color: #fff; text-align: left; font-weight: bold;'>
+                <th style='padding: 12px 15px; border: 1px solid #dddddd;'>Score Name</th>
+                <th style='padding: 12px 15px; border: 1px solid #dddddd;'>Purpose/Context</th>
+                <th style='padding: 12px 15px; border: 1px solid #dddddd;'>Key Reference(s) & Link</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style='border-bottom: 1px solid #dddddd;'>
+                <td style='font-weight: 600; color: #2b5876; padding: 12px 15px; border: 1px solid #dddddd;'>Apfel Score</td>
+                <td style='font-size: 0.97em; color: #212529; padding: 12px 15px; border: 1px solid #dddddd;'>PONV risk prediction; 4 risk factors (female gender, non-smoker, history of PONV/motion sickness, postoperative opioids)</td>
+                <td style='font-size: 0.95em; color: #495057; padding: 12px 15px; border: 1px solid #dddddd;'>Apfel CC, Läärä E, Koivuranta M, Greim CA, Roewer N. "A simplified risk score for predicting postoperative nausea and vomiting: Conclusions from cross-validations between two centers." Anesthesiology 1999;91:693–700. <a href='https://doi.org/10.1097/00000542-199909000-00022' target='_blank'>[DOI]</a></td>
+            </tr>
+            <tr style='border-bottom: 1px solid #dddddd;'>
+                <td style='font-weight: 600; color: #2b5876; padding: 12px 15px; border: 1px solid #dddddd;'>Koivuranta Score</td>
+                <td style='font-size: 0.97em; color: #212529; padding: 12px 15px; border: 1px solid #dddddd;'>PONV risk prediction; 5 predictors (female gender, nonsmoking, history of PONV, history of motion sickness, duration of surgery &gt;60 min)</td>
+                <td style='font-size: 0.95em; color: #495057; padding: 12px 15px; border: 1px solid #dddddd;'>Koivuranta M, Läärä E, Snåre L, Alahuhta S. "A survey of postoperative nausea and vomiting." Anaesthesia 1997;52:443–449. <a href='https://doi.org/10.1111/j.1365-2044.1997.00443.x' target='_blank'>[DOI]</a></td>
+            </tr>
+            <tr style='border-bottom: 1px solid #dddddd;'>
+                <td style='font-weight: 600; color: #2b5876; padding: 12px 15px; border: 1px solid #dddddd;'>Sand Score</td>
+                <td style='font-size: 0.97em; color: #212529; padding: 12px 15px; border: 1px solid #dddddd;'>PONV risk prediction; simplified Apfel 4-point model</td>
+                <td style='font-size: 0.95em; color: #495057; padding: 12px 15px; border: 1px solid #dddddd;'>Same as Apfel Score (see above): <a href='https://doi.org/10.1097/00000542-199909000-00022' target='_blank'>[DOI]</a></td>
+            </tr>
+            <tr style='border-bottom: 1px solid #dddddd;'>
+                <td style='font-weight: 600; color: #2b5876; padding: 12px 15px; border: 1px solid #dddddd;'>Bellville Score</td>
+                <td style='font-size: 0.97em; color: #212529; padding: 12px 15px; border: 1px solid #dddddd;'>Severity grading of PONV; measures intensity and frequency</td>
+                <td style='font-size: 0.95em; color: #495057; padding: 12px 15px; border: 1px solid #dddddd;'>Kumar A et al. Indian J Anaesth. 2021;65(6):453-459. <a href='https://www.ijaweb.org/article.asp?issn=0019-5049;year=2021;volume=65;issue=6;spage=453;epage=459;aulast=Kumar' target='_blank'>[IJA 2021]</a><br>JCDR 2022;16(1):UC01-UC05. <a href='https://www.jcdr.net/article_fulltext.asp?issn=0973-709x;year=2022;volume=16;issue=1;page=UC01-UC05' target='_blank'>[JCDR 2022]</a><br>Preoperative ondansetron vs dexamethasone: <a href='https://pubmed.ncbi.nlm.nih.gov/23049494/' target='_blank'>[PubMed]</a></td>
+            </tr>
+        </tbody>
+    </table>
+    <div style='color:#fff; font-size:0.95em; margin-top:1em;'>
+    You can use these links to access the full texts or abstracts of the referenced research papers.
+    </div>
+    """, unsafe_allow_html=True)
+
+with tab5:
+    st.markdown("""
+    <div style='background: #000; padding: 30px 10px 30px 10px; border-radius: 16px; box-shadow: 0 4px 32px rgba(0,0,0,0.25);'>
+        <div style='font-size:2.2em; font-weight:800; color:#fff; text-align:center; margin-bottom:0.5em;'>Global Feature Importance (LightGBM)</div>
+        <div style='font-size:1.1em; color:#fff; text-align:center; margin-bottom:1em;'>This section shows which variables have the highest global association with the model's predictions, based on LightGBM's feature importances.</div>
+    """, unsafe_allow_html=True)
+    try:
+        import matplotlib.cm as cm
+        importances = lgb_model.feature_importances_
+        indices = np.argsort(importances)[::-1]
+        top_n = 10
+        top_features = np.array(feature_names)[indices][:top_n][::-1]
+        top_importances = importances[indices][:top_n][::-1]
+
+        # Use a colorful colormap
+        cmap = cm.get_cmap('plasma', top_n)
+        colors = [cmap(i) for i in range(top_n)]
+
+        fig, ax = plt.subplots(figsize=(7, 5))
+        fig.patch.set_facecolor('#000')
+        ax.set_facecolor('#000')
+        bars = ax.barh(top_features, top_importances, color=colors, edgecolor='white')
+
+        # Add value labels
+        for bar in bars:
+            ax.text(bar.get_width() + 0.5, bar.get_y() + bar.get_height()/2,
+                    f'{bar.get_width():.0f}', va='center', ha='left', color='white', fontsize=11, fontweight='bold')
+
+        # Set y-tick labels (feature names) to black, bold, simple font
+        ax.set_yticklabels(top_features, color='black', fontweight='bold', fontname='Arial')
+
+        ax.set_xlabel('Importance', color='white')
+        ax.set_title('Top 10 Features (LightGBM)', color='#ffb366', fontsize=16, fontweight='bold')
+        ax.tick_params(axis='x', colors='white')
+        ax.xaxis.label.set_color('white')
+        ax.yaxis.label.set_color('white')
+        ax.title.set_color('#ffb366')
+        ax.spines['bottom'].set_color('white')
+        ax.spines['top'].set_color('white')
+        ax.spines['left'].set_color('white')
+        ax.spines['right'].set_color('white')
+        plt.tight_layout()
+        st.pyplot(fig)
+        # Table of top 10 features
+        import pandas as pd
+        df_feat = pd.DataFrame({
+            'Feature': np.array(feature_names)[indices][:top_n],
+            'Importance': importances[indices][:top_n]
+        })
+        st.subheader("Top 10 Most Important Features")
+        st.table(df_feat)
+    except Exception as e:
+        st.warning(f"Could not display feature importance: {e}")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+plt.rcParams.update({
+    "figure.facecolor": "#ffffff",
+    "axes.facecolor": "#ffffff",
+    "axes.edgecolor": "#000000",
+    "axes.labelcolor": "#000000",
+    "xtick.color": "#000000",
+    "ytick.color": "#000000",
+    "text.color": "#000000",
+    "axes.titlecolor": "#000000",
+    "legend.edgecolor": "#000000",
+    "legend.facecolor": "#ffffff",
+    "legend.labelcolor": "#000000",
+    "savefig.facecolor": "#ffffff",
+    "savefig.edgecolor": "#ffffff",
+    "grid.color": "#cccccc"
+})
+
+
