@@ -1828,8 +1828,8 @@ with tab1:
             <strong>Important:</strong> This application is for informational and educational purposes only and should not be considered a substitute for professional medical advice. The predictions and recommendations provided are based on statistical models and should be used as decision support tools only. Always consult with a qualified healthcare provider for diagnosis and treatment decisions.
         </p>
         <div style='margin-top: 10px; font-size: 0.95em; color: #fff; font-family: Arial, Helvetica, sans-serif;'>
-            <strong>Developed by:</strong> MKCG Medical College & Hospital - MKCG MedAI Labs<br>
-            <strong>Last Updated:</strong> December 2024
+            <strong>Developed by:</strong> Department of Pharmacology - MKCG MedAI Labs<br>
+            <strong>Last Updated:</strong> May 2025
         </div>
     </div>
     """, unsafe_allow_html=True)
