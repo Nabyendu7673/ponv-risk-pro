@@ -1879,7 +1879,10 @@ with tab2:
                 return ''  # Default color for 0 contribution
 
         # Apply the color function to the 'Score Contribution' column
-        styled_df = df_scoring_breakdown.style.applymap(color_score, subset=['Score Contribution'])
+     if hasattr(df_scoring_breakdown.style, "map"):
+    styled_df = df_scoring_breakdown.style.map(color_score, subset=['Score Contribution'])
+else:
+    styled_df = df_scoring_breakdown.style.applymap(color_score, subset=['Score Contribution'])
 
         # Display the styled table
         st.table(styled_df)
