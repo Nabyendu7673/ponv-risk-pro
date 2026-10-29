@@ -129,13 +129,12 @@ def calculate_calibration_curve(y_true: np.ndarray, y_prob: np.ndarray, n_bins: 
     else:
         obs_frac, pred_mean = _manual_calibration_curve(y_true, y_prob, n_bins)
         
-    # Calibration Intercept and Slope via Logistic / Linear Regression
+    # Calibration Intercept and Slope via Linear Regression
     eps = 1e-6
     y_prob_clipped = np.clip(y_prob, eps, 1 - eps)
     logits = np.log(y_prob_clipped / (1.0 - y_prob_clipped))
     
     if len(np.unique(logits)) > 1 and len(np.unique(y_true)) > 1:
-        # Simple linear approximation for calibration slope
         slope, intercept = np.polyfit(logits, y_true, deg=1)
     else:
         slope, intercept = 1.0, 0.0
@@ -161,8 +160,7 @@ def _manual_calibration_curve(y_true, y_prob, n_bins=5):
 def calculate_decision_curve_analysis(y_true: np.ndarray, y_prob: np.ndarray, thresholds=None):
     """
     Computes Net Benefit across clinical decision thresholds (Decision Curve Analysis).
-    Vickers AJ, Elkin EB. Decision curve analysis: a novel method for evaluating prediction models.
-    Medical Decision Making. 2006;26(6):565-574.
+    Reference: Vickers AJ, Elkin EB. Med Decis Making. 2006;26(6):565-574.
     """
     if thresholds is None:
         thresholds = np.linspace(0.05, 0.70, 27)
@@ -208,7 +206,6 @@ def get_db_connection():
             return conn, path
         except sqlite3.OperationalError:
             continue
-    # Ultimate fallback in-memory database
     return sqlite3.connect(":memory:"), ":memory:"
 
 
@@ -312,7 +309,7 @@ init_db()
 
 
 # =============================================================================
-# 3. STREAMLIT UI CONFIGURATION & CLINICAL STYLING
+# 3. STREAMLIT UI CONFIGURATION & CLINICAL THEME
 # =============================================================================
 st.set_page_config(
     page_title="PONV RISK PRO - Publication-Grade Anesthesiology Suite",
@@ -410,14 +407,6 @@ body {
     color: #ffffff;
     box-shadow: 0 2px 10px rgba(255,136,0,0.4);
 }
-.citation-box {
-    background: #181b22;
-    border-left: 4px solid #6c5ce7;
-    padding: 1rem 1.25rem;
-    margin: 1rem 0;
-    border-radius: 0 8px 8px 0;
-    font-size: 0.9em;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -463,10 +452,6 @@ with st.sidebar.expander("💨 Anesthetic Maintenance & Opioid Equianalgesia", e
     postop_tramadol_mg = st.number_input("Postoperative IV Tramadol (mg)", min_value=0, max_value=400, value=50, step=50)
     postop_opioids_anticipated = st.selectbox("Anticipated Postoperative Systemic Opioids", ["Yes", "No"], index=0)
     
-    # Validated equianalgesic conversion to Oral Morphine Milligram Equivalents (OME):
-    # IV Fentanyl 100 µg = 10 mg IV Morphine = 30 mg Oral Morphine (0.3 mg OME / µg)
-    # IV Tramadol 100 mg = 10 mg IV Morphine = 30 mg Oral Morphine (0.3 mg OME / mg)
-    # IV Morphine 1 mg = 3 mg Oral Morphine (3.0 mg OME / mg)
     total_ome_mg = (fentanyl_mcg * 0.3) + (postop_morphine_mg * 3.0) + (postop_tramadol_mg * 0.3)
     st.caption(f"Calculated Opioid Burden: **{total_ome_mg:.1f} mg OME**")
     
@@ -495,7 +480,6 @@ with st.sidebar.expander("🛡️ Antiemetic Prophylaxis Administered", expanded
 # =============================================================================
 # 5. MATHEMATICAL MODELING: DUAL-ENGINE RISK FORMULATION
 # =============================================================================
-# Binary mappings
 f_female = 1 if gender == "Female" else 0
 f_nonsmoker = 1 if smoker == "Non-Smoker" else 0
 f_hx = 1 if hx_ponv == "Yes" else 0
@@ -512,25 +496,20 @@ f_n2o = 1 if n2o_used == "Yes" else 0
 f_tiva = 1 if "TIVA" in maintenance_agent else 0
 
 # --- CLASSICAL HEURISTIC SCORES ---
-# 1. Apfel Simplified Risk Score (0 to 4)
 apfel_score = f_female + f_nonsmoker + f_hx + f_opioids
 apfel_table = {0: 10, 1: 21, 2: 39, 3: 61, 4: 79}
 apfel_pct = apfel_table[apfel_score]
 
-# 2. Koivuranta Score (0 to 5)
 koivuranta_score = f_female + f_nonsmoker + f_hx + f_dur_gt_60 + (1 if age < 50 else 0)
 koivuranta_table = {0: 17, 1: 18, 2: 41, 3: 57, 4: 72, 5: 87}
 koivuranta_pct = koivuranta_table[koivuranta_score]
 
-# 3. Bellville Score (0 to 4)
 high_risk_surg = 1 if (f_lap or f_ent or f_gyn) else 0
 bellville_score = f_female + f_hx + (1 if age < 40 else 0) + high_risk_surg
 bellville_table = {0: 12, 1: 24, 2: 40, 3: 62, 4: 78}
 bellville_pct = bellville_table[bellville_score]
 
 # --- MULTIVARIABLE PHARMACODYNAMIC LOGISTIC MODEL ---
-# Literature-calibrated adjusted log-odds (Apfel NEJM 2004; Gan Anesth Analg 2020)
-# Baseline Logit (Patient phenotype + Surgical trauma)
 patient_surg_logit = (
     -2.85
     + (0.78 * f_female)
@@ -546,11 +525,9 @@ patient_surg_logit = (
     + (-0.012 * (age - 40))
 )
 
-# Anesthetic Maintenance & Opioid Burden Log-odds
 if f_tiva:
-    drug_maintenance_logit = -0.75  # Propofol TIVA actively reduces PONV (OR ~0.47 to 0.51)
+    drug_maintenance_logit = -0.75
 else:
-    # Volatile emetogenic risk scales with duration (up to 4 hours plateau)
     dur_ratio = min(surgical_duration / 60.0, 4.0)
     base_volatile_coeff = 0.40 if "Sevoflurane" in maintenance_agent else 0.52
     drug_maintenance_logit = base_volatile_coeff * dur_ratio
@@ -565,7 +542,6 @@ elif "High Dose" in reversal_choice:
 else:
     drug_reversal_logit = 0.05
 
-# UNPROPHYLAXED BASELINE RISK (Pre-intervention emetogenic load)
 unprophylaxed_logit = (
     patient_surg_logit
     + drug_maintenance_logit
@@ -575,21 +551,14 @@ unprophylaxed_logit = (
 )
 baseline_prob = float(1.0 / (1.0 + np.exp(-unprophylaxed_logit)))
 
-# MULTIMODAL PROPHYLAXIS MITIGATION:
-# Apfel et al. NEJM 2004 established that each independent antiemetic class delivers 
-# a ~26% Relative Risk Reduction (RR ~0.74, log-odds delta approx -0.32 per independent class).
 prophylaxis_delta = -0.32 * prophylaxis_count
-
-# RESIDUAL MITIGATED RISK (Post-intervention risk given chosen regimen)
 residual_logit = unprophylaxed_logit + prophylaxis_delta
 residual_prob = float(1.0 / (1.0 + np.exp(-residual_logit)))
 
-# Clinical Treatment Effect Parameters
 arr = max(0.0, baseline_prob - residual_prob)
 rrr = (arr / baseline_prob) if baseline_prob > 0 else 0.0
 nnt = (1.0 / arr) if arr > 0.001 else float('nan')
 
-# Risk Stratification Tiers (SAMBA 2020 Fourth Consensus)
 def get_risk_tier(prob):
     if prob < 0.30:
         return "LOW", "risk-badge-low"
@@ -625,7 +594,7 @@ if "High Dose" in reversal_choice and not proph_5ht3:
 
 
 # =============================================================================
-# 7. MAIN INTERFACE TABS (PEER-REVIEW & CLINICAL SUITE)
+# 7. MAIN INTERFACE TABS
 # =============================================================================
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🚀 Point-of-Care Bedside Decision Support",
@@ -703,7 +672,6 @@ with tab1:
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Display safety warnings if triggered
     for warn in safety_warnings:
         st.markdown(warn)
 
@@ -809,14 +777,12 @@ with tab2:
                 except Exception as ex:
                     st.error(f"Error reading CSV file: {ex}")
 
-    # Inspect current database records
     raw_df = fetch_all_registry_cases()
     verified_cohort = raw_df.dropna(subset=["actual_outcome"]).copy()
     
     st.markdown("---")
     st.subheader(f"Audited Cohort Overview (Registered: {len(raw_df)} | Verified 24h Follow-ups: {len(verified_cohort)})")
     
-    # Toggle for Synthetic Demonstration Cohort (clearly labeled, zero falsification)
     use_synthetic_demo = False
     if len(verified_cohort) < 5:
         st.warning(
@@ -840,7 +806,6 @@ with tab2:
         np.random.seed(42)
         demo_n = 120
         demo_probs = np.random.beta(2, 3, size=demo_n)
-        # Outcome correlated with probability (true calibration)
         demo_outcomes = (np.random.rand(demo_n) < demo_probs).astype(int)
         eval_df = pd.DataFrame({
             "study_id": [f"BENCH-{i:03d}" for i in range(demo_n)],
@@ -855,7 +820,6 @@ with tab2:
     if len(eval_df) == 0:
         st.info("No audited outcomes available yet. Register patient cases and log their 24h postoperative outcomes above, or enable the benchmark demo.")
     else:
-        # Table of verified records
         col_t1, col_t2 = st.columns([4, 1])
         with col_t1:
             display_cols = [c for c in ["study_id", "apfel_score", "total_ome_mg", "baseline_prob", "residual_prob", "actual_outcome", "timestamp"] if c in eval_df.columns]
@@ -879,13 +843,11 @@ with tab2:
             )
             y_pred = (y_prob >= cutoff).astype(int)
 
-            # Confusion counts
             tp = int(np.sum((y_pred == 1) & (y_true == 1)))
             tn = int(np.sum((y_pred == 0) & (y_true == 0)))
             fp = int(np.sum((y_pred == 1) & (y_true == 0)))
             fn = int(np.sum((y_pred == 0) & (y_true == 1)))
 
-            # Metrics with Wilson 95% Confidence Intervals
             sens, sens_l, sens_u = wilson_score_interval(tp, tp + fn)
             spec, spec_l, spec_u = wilson_score_interval(tn, tn + fp)
             ppv, ppv_l, ppv_u = wilson_score_interval(tp, tp + fp)
@@ -893,12 +855,10 @@ with tab2:
             acc, acc_l, acc_u = wilson_score_interval(tp + tn, len(y_true))
             brier = float(np.mean((y_prob - y_true)**2))
             
-            # Reference Brier (predicting base rate)
             prev = float(np.mean(y_true))
             brier_ref = float(np.mean((prev - y_true)**2))
             brier_skill = 1.0 - (brier / brier_ref) if brier_ref > 0 else 0.0
 
-            # Render Metric Cards with 95% CIs
             m1, m2, m3, m4, m5, m6 = st.columns(6)
             m1.metric("Sensitivity", f"{sens*100:.1f}%", f"95% CI: {sens_l*100:.0f}–{sens_u*100:.0f}%")
             m2.metric("Specificity", f"{spec*100:.1f}%", f"95% CI: {spec_l*100:.0f}–{spec_u*100:.0f}%")
@@ -910,7 +870,6 @@ with tab2:
             st.markdown("---")
             g1, g2, g3 = st.columns(3)
 
-            # G1: Confusion Matrix Table
             with g1:
                 st.markdown("#### Clinical Confusion Matrix")
                 cm_df = pd.DataFrame(
@@ -921,7 +880,6 @@ with tab2:
                 st.table(cm_df)
                 st.caption(f"**Interpretation:** Accurately confirmed **{tp}** emetic cases and ruled out **{tn}** asymptomatic cases at threshold {cutoff*100:.0f}%.")
 
-            # G2: ROC-AUC Curve
             with g2:
                 st.markdown("#### Discrimination: ROC-AUC")
                 fpr, tpr, roc_auc, (auc_l, auc_u) = calculate_roc_auc(y_true, y_prob)
@@ -939,7 +897,6 @@ with tab2:
                     sp.set_color("#444")
                 st.pyplot(fig_roc)
 
-            # G3: Calibration Curve
             with g3:
                 st.markdown("#### Reliability: Calibration Plot")
                 obs_f, pred_m, cal_slope, cal_intercept = calculate_calibration_curve(y_true, y_prob, n_bins=5)
@@ -1140,7 +1097,6 @@ with tab5:
     
     st.table(lit_table)
 
-    # Forest plot of Adjusted Odds Ratios
     st.markdown("### Forest Plot of Adjusted Odds Ratios (95% CI)")
     fig_fp, ax_f = plt.subplots(figsize=(9, 4.8))
     fig_fp.patch.set_facecolor("#1a1d24")
